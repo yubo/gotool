@@ -2,7 +2,6 @@
  * yubo@yubo.org
  * 2015-12-04
  */
-
 package timer
 
 /*
@@ -14,39 +13,6 @@ import (
 	"time"
 )
 
-// when is a helper function for setting the 'when' field of a runtimeTimer.
-// It returns what the time will be, in nanoseconds, Duration d in the future.
-// If d is negative, it is ignored.  If the returned value would be less than
-// zero because of an overflow, MaxInt64 is returned.
-func when(d time.Duration) int64 {
-	if d <= 0 {
-		return Nanotime()
-	}
-	t := Nanotime() + int64(d)
-	if t < 0 {
-		t = 1<<63 - 1 // math.MaxInt64
-	}
-	return t
-}
-
-func NewTimer(d time.Duration, cb func(interface{}), arg interface{}) error {
-	t := &timer{
-		when: when(d),
-		f:    cb,
-		arg:  arg,
-	}
-	startTimer(t)
-	return nil
-}
-
-func Nanotime() int64 {
-	return int64(C.nanotime())
-}
-
-// Package time knows the layout of this structure.
-// If this struct changes, adjust ../time/sleep.go:/runtimeTimer.
-// For GOOS=nacl, package syscall knows the layout of this structure.
-// If this struct changes, adjust ../syscall/net_nacl.go:/runtimeTimer.
 type timer struct {
 	i int // heap index
 
@@ -70,21 +36,28 @@ var timers struct {
 	reschedule   chan bool
 }
 
-// nacl fake time support - time in nanoseconds since 1970
-var faketime int64
-
-// Package time APIs.
-// Godoc uses the comments in package time, not these.
+// when is a helper function for setting the 'when' field of a runtimeTimer.
+// It returns what the time will be, in nanoseconds, Duration d in the future.
+// If d is negative, it is ignored.  If the returned value would be less than
+// zero because of an overflow, MaxInt64 is returned.
+func when(d time.Duration) int64 {
+	if d <= 0 {
+		return Nanotime()
+	}
+	t := Nanotime() + int64(d)
+	if t < 0 {
+		t = 1<<63 - 1 // math.MaxInt64
+	}
+	return t
+}
 
 // startTimer adds t to the timer heap.
-//go:linkname startTimer time.startTimer
 func startTimer(t *timer) {
 	addtimer(t)
 }
 
 // stopTimer removes t from the timer heap if it is there.
 // It returns true if t was removed, false if t wasn't even there.
-//go:linkname stopTimer time.stopTimer
 func stopTimer(t *timer) bool {
 	return deltimer(t)
 }
@@ -206,7 +179,7 @@ func timerproc() {
 			f(arg)
 			timers.lock.Lock()
 		}
-		if delta < 0 || faketime > 0 {
+		if delta < 0 {
 			// No timers left - put goroutine to sleep.
 			timers.rescheduling = true
 			<-timers.reschedule
@@ -278,4 +251,29 @@ func siftdownTimer(i int) {
 		t[c].i = c
 		i = c
 	}
+}
+
+func NewTicker(d time.Duration, cb func(interface{}), arg interface{}) error {
+	t := &timer{
+		when:   when(d),
+		period: int64(d),
+		f:      cb,
+		arg:    arg,
+	}
+	startTimer(t)
+	return nil
+}
+
+func NewTimer(d time.Duration, cb func(interface{}), arg interface{}) error {
+	t := &timer{
+		when: when(d),
+		f:    cb,
+		arg:  arg,
+	}
+	startTimer(t)
+	return nil
+}
+
+func Nanotime() int64 {
+	return int64(C.nanotime())
 }

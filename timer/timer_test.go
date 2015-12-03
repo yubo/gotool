@@ -16,6 +16,7 @@ func timer_cb(data interface{}) {
 
 func Test_timer(t *testing.T) {
 	log.SetFlags(log.Ltime | log.Lmicroseconds | log.Lshortfile)
+	NewTicker(time.Second, timer_cb, "hello ticker")
 	NewTimer(time.Second*2, timer_cb, "hello 2")
 	NewTimer(time.Second, timer_cb, "hello 1")
 	NewTimer(time.Second*3, timer_cb, "hello 3")
