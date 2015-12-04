@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-type timer struct {
+type Timer struct {
 	i int // heap index
 
 	// Timer wakes up at when, and then at when+period, ... (period > 0 only)
@@ -28,7 +28,7 @@ type timer struct {
 var timers struct {
 	T            *time.Timer
 	lock         sync.Mutex
-	t            []*timer
+	t            []*Timer
 	created      bool
 	sleeping     bool
 	rescheduling bool
@@ -52,17 +52,17 @@ func when(d time.Duration) int64 {
 }
 
 // startTimer adds t to the timer heap.
-func startTimer(t *timer) {
+func startTimer(t *Timer) {
 	addtimer(t)
 }
 
 // stopTimer removes t from the timer heap if it is there.
 // It returns true if t was removed, false if t wasn't even there.
-func stopTimer(t *timer) bool {
+func stopTimer(t *Timer) bool {
 	return deltimer(t)
 }
 
-func addtimer(t *timer) {
+func addtimer(t *Timer) {
 	timers.lock.Lock()
 	addtimerLocked(t)
 	timers.lock.Unlock()
@@ -71,7 +71,7 @@ func addtimer(t *timer) {
 // Add a timer to the heap and start or kick the timer proc.
 // If the new timer is earlier than any of the others.
 // Timers are locked.
-func addtimerLocked(t *timer) {
+func addtimerLocked(t *Timer) {
 	// when must never be negative; otherwise timerproc will overflow
 	// during its delta calculation and never expire other runtime·timers.
 	if t.when < 0 {
@@ -89,13 +89,15 @@ func addtimerLocked(t *timer) {
 			default:
 			}
 		}
-		if timers.rescheduling {
-			timers.rescheduling = false
-			select {
-			case timers.reschedule <- timers.rescheduling:
-			default:
+		/*
+			if timers.rescheduling {
+				timers.rescheduling = false
+				select {
+				case timers.reschedule <- timers.rescheduling:
+				default:
+				}
 			}
-		}
+		*/
 	}
 	if !timers.created {
 		timers.created = true
@@ -108,7 +110,7 @@ func addtimerLocked(t *timer) {
 
 // Delete timer t from the heap.
 // Do not need to update the timerproc: if it wakes up early, no big deal.
-func deltimer(t *timer) bool {
+func deltimer(t *Timer) bool {
 	// Dereference t so that any panic happens before the lock is held.
 	// Discard result, because t might be moving in the heap.
 	_ = t.i
@@ -181,8 +183,9 @@ func timerproc() {
 		}
 		if delta < 0 {
 			// No timers left - put goroutine to sleep.
-			timers.rescheduling = true
-			<-timers.reschedule
+			//timers.rescheduling = true
+			timers.sleeping = true
+			<-timers.sleep
 			continue
 		}
 		// At least one timer pending.  Sleep until then.
@@ -190,7 +193,7 @@ func timerproc() {
 		timers.T.Reset(time.Duration(delta))
 		timers.lock.Unlock()
 		select {
-		case <-timers.reschedule:
+		case <-timers.sleep:
 		case <-timers.T.C:
 		}
 	}
@@ -253,25 +256,29 @@ func siftdownTimer(i int) {
 	}
 }
 
-func NewTicker(d time.Duration, cb func(interface{}), arg interface{}) error {
-	t := &timer{
+func (t *Timer) Del() bool {
+	return deltimer(t)
+}
+
+func NewTicker(d time.Duration, cb func(interface{}), arg interface{}) *Timer {
+	t := &Timer{
 		when:   when(d),
 		period: int64(d),
 		f:      cb,
 		arg:    arg,
 	}
 	startTimer(t)
-	return nil
+	return t
 }
 
-func NewTimer(d time.Duration, cb func(interface{}), arg interface{}) error {
-	t := &timer{
+func NewTimer(d time.Duration, cb func(interface{}), arg interface{}) *Timer {
+	t := &Timer{
 		when: when(d),
 		f:    cb,
 		arg:  arg,
 	}
 	startTimer(t)
-	return nil
+	return t
 }
 
 func Nanotime() int64 {
