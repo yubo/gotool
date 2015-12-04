@@ -21,6 +21,7 @@ type Timer struct {
 	// a well-behaved function and not block.
 	when   int64
 	period int64
+	expiry int64
 	f      func(interface{})
 	arg    interface{}
 }
@@ -157,7 +158,7 @@ func timerproc() {
 			if delta > 0 {
 				break
 			}
-			if t.period > 0 {
+			if t.period > 0 && (t.expiry == 0 || t.when < t.expiry) {
 				// leave in heap but adjust next time to fire
 				t.when += t.period * (1 + -delta/t.period)
 				siftdownTimer(0)
@@ -258,6 +259,18 @@ func siftdownTimer(i int) {
 
 func (t *Timer) Del() bool {
 	return deltimer(t)
+}
+
+func NewTicker2(d, expiry time.Duration, cb func(interface{}), arg interface{}) *Timer {
+	t := &Timer{
+		when:   when(d),
+		period: int64(d),
+		expiry: when(expiry),
+		f:      cb,
+		arg:    arg,
+	}
+	startTimer(t)
+	return t
 }
 
 func NewTicker(d time.Duration, cb func(interface{}), arg interface{}) *Timer {

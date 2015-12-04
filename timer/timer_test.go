@@ -23,12 +23,14 @@ func timer_cb(data interface{}) {
 func Test_timer(t *testing.T) {
 	log.SetFlags(log.Ltime | log.Lmicroseconds | log.Lshortfile)
 
-	i := int(0)
+	i := int(100)
+	j := int(200)
 	NewTicker(time.Second, ticker_cb, &i)
 	NewTimer(time.Second*2, timer_cb, "hello 2")
 	NewTimer(time.Second, timer_cb, "hello 1")
 	NewTimer(time.Second*3, timer_cb, "hello 3")
 	time.Sleep(time.Second * 5)
 	NewTimer(time.Second, timer_cb, "hello 6")
-	time.Sleep(time.Second * 3)
+	NewTicker2(time.Second*1, time.Second*3, ticker_cb, &j)
+	time.Sleep(time.Second * 10)
 }
