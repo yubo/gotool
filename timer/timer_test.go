@@ -25,6 +25,7 @@ func Test_timer(t *testing.T) {
 
 	i := int(100)
 	j := int(200)
+	log.Println("start")
 	NewTicker(time.Second, ticker_cb, &i)
 	NewTimer(time.Second*2, timer_cb, "hello 2")
 	NewTimer(time.Second, timer_cb, "hello 1")
