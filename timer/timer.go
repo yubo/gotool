@@ -6,6 +6,7 @@ package timer
 
 /*
 #include "timer.h"
+#cgo LDFLAGS: -lrt
 */
 import "C"
 import (
