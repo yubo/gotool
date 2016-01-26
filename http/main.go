@@ -1,5 +1,4 @@
 // go get github.com/yubo/gotool/http
-
 package main
 
 import (
