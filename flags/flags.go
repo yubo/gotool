@@ -11,33 +11,37 @@ import (
 )
 
 type flag_t struct {
-	name  string
-	usage string
-	h     bool
-	flag  *flag.FlagSet
+	Name   string
+	usage  string
+	h      bool
+	Flag   *flag.FlagSet
+	Action func(args interface{})
 }
 
 type flags_t struct {
 	flags []*flag_t
 	Usage string
 	Name  string
+	Cmd   *flag_t
 	h     bool
 }
 
 var CommandLine flags_t
 
-func NewCommand(name, usage string, errorHandling flag.ErrorHandling) *flag.FlagSet {
+func NewCommand(name, usage string, action func(args interface{}),
+	errorHandling flag.ErrorHandling) *flag.FlagSet {
 
 	f := &flag_t{
-		name:  name,
-		usage: usage,
-		flag:  flag.NewFlagSet(name, errorHandling),
+		Name:   name,
+		usage:  usage,
+		Flag:   flag.NewFlagSet(name, errorHandling),
+		Action: action,
 	}
-	f.flag.Usage = f.Usage
+	f.Flag.Usage = f.Usage
 	CommandLine.flags = append(CommandLine.flags, f)
 
-	f.flag.BoolVar(&f.h, "h", false, "Print usage")
-	return f.flag
+	f.Flag.BoolVar(&f.h, "h", false, "Print usage")
+	return f.Flag
 }
 
 func Parse() {
@@ -47,11 +51,12 @@ func Parse() {
 func (f *flags_t) Parse(args []string) (err error) {
 	for i, arg := range args {
 		for _, f := range CommandLine.flags {
-			if arg == f.name {
+			if arg == f.Name {
+				CommandLine.Cmd = f
 				if err = flag.CommandLine.Parse(args[0:i]); err != nil {
 					return
 				}
-				if err = f.flag.Parse(args[i+1:]); err != nil {
+				if err = f.Flag.Parse(args[i+1:]); err != nil {
 					return
 				}
 				if f.h {
@@ -71,9 +76,9 @@ func (f *flags_t) Parse(args []string) (err error) {
 
 func (f *flag_t) Usage() {
 	fmt.Fprintf(os.Stderr,
-		"Usage: %s [OPTIONS] %s [ARG...]\n", os.Args[0], f.name)
+		"Usage: %s [OPTIONS] %s [ARG...]\n", os.Args[0], f.Name)
 	fmt.Fprintf(os.Stderr, "\n%s\n\n", f.usage)
-	f.flag.PrintDefaults()
+	f.Flag.PrintDefaults()
 }
 
 func Usage() {
@@ -88,7 +93,7 @@ func Usage() {
 
 	fmt.Fprintf(os.Stderr, "\nCommands:\n")
 	for _, f := range CommandLine.flags {
-		fmt.Fprintf(os.Stderr, "    %-9s %s\n", f.name, f.usage)
+		fmt.Fprintf(os.Stderr, "    %-9s %s\n", f.Name, f.usage)
 	}
 
 	fmt.Fprintf(os.Stderr,
