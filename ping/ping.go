@@ -282,6 +282,13 @@ func tx_loop(running chan struct{}, C <-chan time.Time) {
 				}
 				idx = 0
 			}
+
+			for idx < len(cur.Ips) {
+				if !cur.Ret[idx] {
+					break
+				}
+				idx++
+			}
 			if idx >= len(cur.Ips) {
 				if cur, err = cur.next(); err != nil {
 					glog.V(4).Infof("tx loop: %s ", err)
