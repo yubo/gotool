@@ -204,9 +204,7 @@ func (p *Task) next() (*Task, error) {
 		glog.V(4).Infof("task[%p] move to tail", p)
 	}
 
-	n := server.t_list.Next
-	_n := n.Next
-	for n != &server.t_list {
+	for n, _n := server.t_list.Next, server.t_list.Next.Next; n != &server.t_list; n, _n = _n, _n.Next {
 		task := list_to_task(n)
 		//glog.V(5).Infof("task[%p] check", task)
 
@@ -218,7 +216,7 @@ func (p *Task) next() (*Task, error) {
 			}
 			glog.V(4).Infof("task[%p] skip wait until %d now %d",
 				task, task.startTs+task.Timeout, now)
-			goto next
+			continue
 		}
 
 		if now > task.lastTs+task.Timeout {
@@ -228,9 +226,7 @@ func (p *Task) next() (*Task, error) {
 
 			task.t_list.Del()
 
-			pos := task.e_list.Next
-			_pos := pos.Next
-			for pos != &task.e_list {
+			for pos, _pos := task.e_list.Next, task.e_list.Next.Next; pos != &task.e_list; pos, _pos = _pos, _pos.Next {
 
 				/*
 				 * Ugly Hack !
@@ -245,17 +241,12 @@ func (p *Task) next() (*Task, error) {
 				/* remove task_entry from server.ips list */
 				list_to_entry(pos).s_list.Del()
 
-				pos = _pos
-				_pos = _pos.Next
 			}
 			task.Unlock()
 			server.Unlock()
 			task.Done <- task
 			glog.V(4).Infof("task[%p] done", task)
 		}
-	next:
-		n = _n
-		_n = _n.Next
 	}
 	return nil, ErrEmpty
 }

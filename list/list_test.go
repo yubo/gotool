@@ -40,11 +40,7 @@ func TestAdd(t *testing.T) {
 		fmt.Printf("list x:%d\n", p.entry().x)
 	}
 
-	p := h.Next
-	_p := p.Next
-	for p != h {
+	for p, _p := h.Next, h.Next.Next; p != h; p, _p = _p, _p.Next {
 		fmt.Printf("del x:%d\n", p.entry().x)
-		p = _p
-		_p = _p.Next
 	}
 }
