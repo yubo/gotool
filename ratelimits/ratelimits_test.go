@@ -13,9 +13,13 @@ import (
 
 func test(qps, accuracy, ts uint32) {
 	stats := make(map[bool]int)
-	x, _ := New(qps, accuracy)
+	x, err := New(qps, accuracy)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	done := make(chan struct{}, 1)
-	go func(done chan struct{}) {
+	go func(done chan struct{}, x *RateLimits) {
 		for {
 			select {
 			case <-done:
@@ -29,9 +33,32 @@ func test(qps, accuracy, ts uint32) {
 				time.Sleep(time.Nanosecond)
 			}
 		}
-	}(done)
+	}(done, x)
 	time.Sleep(time.Second * time.Duration(ts))
 	done <- struct{}{}
+}
+
+func testGc() {
+	x, _ := New(10, 1)
+
+	err := x.GcStart(time.Second)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	for i := 0; i < 200; i++ {
+		x.Update(fmt.Sprintf("i_%d", i))
+		time.Sleep(time.Millisecond * 10)
+	}
+
+	for i := 0; i < 10; i++ {
+		fmt.Printf("rl.Len() %d\n", x.Len())
+		time.Sleep(time.Millisecond * 100)
+	}
+
+	x.GcStop()
+	time.Sleep(100 * time.Millisecond) // let cancelation propagate
 }
 
 func TestAll(t *testing.T) {
@@ -47,4 +74,5 @@ func TestAll(t *testing.T) {
 	test(10000, 2, 1)
 	test(10000, 4, 1)
 	test(10000, 8, 1)
+	testGc()
 }

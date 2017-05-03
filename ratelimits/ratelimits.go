@@ -7,6 +7,7 @@
 package ratelimits
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -15,6 +16,7 @@ import (
 
 const (
 	RL_MAX_BITS = 8
+	RL_GC_TIME  = 100
 )
 
 type entry struct {
@@ -30,6 +32,10 @@ type RateLimits struct {
 	size    uint32
 	mask    uint32
 	offset  time.Duration
+	timeout time.Duration
+	ctx     context.Context
+	stop    context.CancelFunc
+	gcStart bool
 	sync.RWMutex
 }
 
@@ -66,7 +72,63 @@ func New(hz, accuracy uint32) (*RateLimits, error) {
 	rl.mask = rl.size - 1
 	rl.offset = time.Duration(rl.size) * time.Second / time.Duration(hz)
 
+	rl.ctx, rl.stop = context.WithCancel(context.Background())
+
 	return rl, nil
+}
+
+func (rl *RateLimits) gc() error {
+	rl.Lock()
+	defer rl.Unlock()
+
+	now := time.Now()
+	for key, e := range rl.members {
+		if now.Sub(e.ts[(e.i-1)&rl.mask]) > rl.timeout {
+			delete(rl.members, key)
+		}
+	}
+	return nil
+}
+
+func (rl *RateLimits) Len() int {
+	rl.Lock()
+	defer rl.Unlock()
+	return len(rl.members)
+}
+
+func (rl *RateLimits) GcStart(timeout time.Duration) error {
+	rl.Lock()
+	defer rl.Unlock()
+
+	if timeout <= rl.offset {
+		return errors.New("timeout must greater then offset")
+	}
+
+	if rl.gcStart {
+		return errors.New("already start")
+	}
+
+	rl.gcStart = true
+	rl.timeout = timeout
+
+	go func(rl *RateLimits) {
+
+		c := time.NewTicker(time.Millisecond * RL_GC_TIME).C
+		for {
+			select {
+			case <-rl.ctx.Done():
+				fmt.Printf("gcStart() return len() %d\n", rl.Len())
+				return
+			case <-c:
+				rl.gc()
+			}
+		}
+	}(rl)
+	return nil
+}
+
+func (rl *RateLimits) GcStop() {
+	rl.stop()
 }
 
 func (rl *RateLimits) add(key string) (e *entry) {
