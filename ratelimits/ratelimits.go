@@ -26,16 +26,17 @@ type entry struct {
 }
 
 type RateLimits struct {
-	members map[string]*entry
-	hz      uint32 //  HZ
-	bits    uint32 //  slices per cycle
-	size    uint32
-	mask    uint32
-	offset  time.Duration
-	timeout time.Duration
-	ctx     context.Context
-	stop    context.CancelFunc
-	gcStart bool
+	members     map[string]*entry
+	hz          uint32 //  HZ
+	bits        uint32 //  slices per cycle
+	size        uint32
+	mask        uint32
+	offset      time.Duration
+	dataTimeout time.Duration
+	gcInterval  time.Duration
+	ctx         context.Context
+	stop        context.CancelFunc
+	gcStart     bool
 	sync.RWMutex
 }
 
@@ -83,7 +84,7 @@ func (rl *RateLimits) gc() error {
 
 	now := time.Now()
 	for key, e := range rl.members {
-		if now.Sub(e.ts[(e.i-1)&rl.mask]) > rl.timeout {
+		if now.Sub(e.ts[(e.i-1)&rl.mask]) > rl.dataTimeout {
 			delete(rl.members, key)
 		}
 	}
@@ -96,11 +97,11 @@ func (rl *RateLimits) Len() int {
 	return len(rl.members)
 }
 
-func (rl *RateLimits) GcStart(timeout time.Duration) error {
+func (rl *RateLimits) GcStart(dataTimeout, gcInterval time.Duration) error {
 	rl.Lock()
 	defer rl.Unlock()
 
-	if timeout <= rl.offset {
+	if dataTimeout <= rl.offset {
 		return errors.New("timeout must greater then offset")
 	}
 
@@ -109,11 +110,11 @@ func (rl *RateLimits) GcStart(timeout time.Duration) error {
 	}
 
 	rl.gcStart = true
-	rl.timeout = timeout
+	rl.dataTimeout = dataTimeout
 
 	go func(rl *RateLimits) {
 
-		c := time.NewTicker(time.Millisecond * RL_GC_TIME).C
+		c := time.NewTicker(gcInterval).C
 		for {
 			select {
 			case <-rl.ctx.Done():

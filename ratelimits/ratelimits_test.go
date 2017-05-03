@@ -41,7 +41,7 @@ func test(qps, accuracy, ts uint32) {
 func testGc() {
 	x, _ := New(10, 1)
 
-	err := x.GcStart(time.Second)
+	err := x.GcStart(time.Second, time.Millisecond*10)
 	if err != nil {
 		fmt.Println(err)
 		return
