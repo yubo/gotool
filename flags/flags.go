@@ -49,6 +49,19 @@ func Parse() {
 	CommandLine.Parse(os.Args[1:])
 }
 
+func (f *flags_t) Exec() {
+	if f.Cmd == nil || f.Cmd.Action == nil {
+		Usage()
+		return
+	}
+
+	f.Cmd.Action(f.Cmd.Flag.Args())
+}
+
+func Exec() {
+	CommandLine.Exec()
+}
+
 func (f *flags_t) Parse(args []string) (err error) {
 	for i, arg := range args {
 		for _, f := range CommandLine.flags {
