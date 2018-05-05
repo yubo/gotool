@@ -12,6 +12,8 @@ import (
 	"reflect"
 	"strconv"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 const (
@@ -50,13 +52,9 @@ type Rows struct {
 	err  error
 }
 
-func (p *Rows) Row(dest ...interface{}) error {
-	var (
-		err error
-	)
-
+func (p *Rows) Row(dest ...interface{}) (err error) {
 	if p.err != nil {
-		return err
+		return p.err
 	}
 	defer p.rows.Close()
 
@@ -64,7 +62,7 @@ func (p *Rows) Row(dest ...interface{}) error {
 		if p.rows.Next() {
 			return p.rows.Scan(dest...)
 		}
-
+		return sql.ErrNoRows
 	}
 
 	if err != nil {
@@ -106,14 +104,15 @@ func (p *Rows) Rows(dest interface{}) (err error) {
 	st := reflect.New(sliceElementType)
 
 	if !isStructMode(st.Interface()) {
+		err = sql.ErrNoRows
 		for p.rows.Next() {
 			newValue := reflect.New(sliceElementType)
 			if err = p.rows.Scan(newValue.Interface()); err != nil {
-				return err
+				return
 			}
 			sliceValue.Set(reflect.Append(sliceValue, reflect.Indirect(reflect.ValueOf(newValue.Interface()))))
 		}
-		return nil
+		return
 	}
 
 	if err != nil {
@@ -141,6 +140,7 @@ func (p *Rows) _rows(limit int) (resultsSlice []map[string][]byte, err error) {
 
 	fields, err := p.rows.Columns()
 	if err != nil {
+		glog.V(3).Infof("%#v", err)
 		return nil, err
 	}
 	for p.rows.Next() && limit > 0 {
