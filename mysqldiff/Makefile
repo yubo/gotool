@@ -1,6 +1,10 @@
-EXEC=$(GOPATH)/bin/mysqldiff
+TARGET=$(GOPATH)/bin/mysqldiff
 
-all: $(EXEC)
+all: $(TARGET)
 
-$(EXEC): *.go
+$(TARGET): *.go
 	go build -o $@
+
+.PHONY: clean
+clean:
+	rm -f $(TARGET)
