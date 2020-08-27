@@ -5,6 +5,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/yubo/golib/orm"
+	"github.com/yubo/golib/status"
 	"github.com/yubo/golib/util"
 )
 
@@ -47,7 +48,7 @@ func mysqldiff(cf *Config) error {
 
 func (p *differ) do() error {
 	for _, v := range p.sqls {
-		fmt.Println(v)
+		fmt.Println(v + ";")
 		if !p.exec {
 			continue
 		}
@@ -86,12 +87,12 @@ func (p *differ) close() error {
 
 func (p *differ) compareDb() error {
 	var srcTables []string
-	if err := p.srcDb.Query("show tables").Rows(&srcTables); err != nil {
+	if err := p.srcDb.Query("show tables").Rows(&srcTables); err != nil && !status.NotFound(err) {
 		return err
 	}
 
 	var dstTables []string
-	if err := p.dstDb.Query("show tables").Rows(&dstTables); err != nil {
+	if err := p.dstDb.Query("show tables").Rows(&dstTables); err != nil && !status.NotFound(err) {
 		return err
 	}
 
@@ -132,12 +133,22 @@ func (p *differ) compareTable(tableName string) error {
 		return err
 	}
 
-	if err := p.mysqlDiffField(s, d); err != nil {
+	// update
+
+	// drop , del
+	add, drop, err := p.mysqlDiffKey(s, d)
+	if err != nil {
 		return err
 	}
 
-	if err := p.mysqlDiffKey(s, d); err != nil {
+	for _, v := range drop {
+		p.addSql(v)
+	}
+	if err := p.mysqlDiffField(s, d); err != nil {
 		return err
+	}
+	for _, v := range add {
+		p.addSql(v)
 	}
 
 	return nil
@@ -185,11 +196,11 @@ func (p *differ) mysqlDiffField(srcTable, dstTable *MysqlTable) error {
 		var fp *FieldInfo
 		for oi, f := range oFlds {
 			if oi >= oIdx {
-				if _, ok := ignoreMap[f.Name]; !ok {
+				if ignoreMap[f.Name] {
+					oIdx += 1
+				} else {
 					fp = &f
 					break
-				} else {
-					oIdx += 1
 				}
 			}
 		}
@@ -239,7 +250,16 @@ func (p *differ) mysqlDiffField(srcTable, dstTable *MysqlTable) error {
 	return nil
 }
 
-func (p *differ) mysqlDiffKey(srcTable, dstTable *MysqlTable) error {
+func typeTrimmer(typ string) string {
+	switch typ {
+	case "UNIQUE KEY":
+		return "KEY"
+	default:
+		return typ
+	}
+}
+
+func (p *differ) mysqlDiffKey(srcTable, dstTable *MysqlTable) (add, del []string, err error) {
 	srcKeys := srcTable.Keys
 	dstKeys := dstTable.Keys
 	srcMap := make(map[string]bool, len(srcKeys))
@@ -256,11 +276,11 @@ func (p *differ) mysqlDiffKey(srcTable, dstTable *MysqlTable) error {
 
 			// mother
 			// eg.: alter table xxx drop keytype keyname
-			p.addSql("alter table %s drop %s %s", srcTable.Name, k.Type, k.Name)
+			del = append(del, fmt.Sprintf("alter table %s drop %s %s", srcTable.Name, typeTrimmer(k.Type), k.Name))
 
 			// child
 			for _, cnm := range srcTable.ChildNames {
-				p.addSql("alter table %s drop %s %s", cnm, k.Type, k.Name)
+				del = append(del, fmt.Sprintf("alter table %s drop %s %s", cnm, typeTrimmer(k.Type), k.Name))
 			}
 		} else {
 			srcMap[k.Name] = true
@@ -274,11 +294,11 @@ func (p *differ) mysqlDiffKey(srcTable, dstTable *MysqlTable) error {
 		var kp *KeyInfo
 		for oi, k := range srcKeys {
 			if oi >= oIdx {
-				if _, ok := ignoreMap[k.Name]; !ok {
+				if ignoreMap[k.Name] {
+					oIdx += 1
+				} else {
 					kp = &k
 					break
-				} else {
-					oIdx += 1
 				}
 			}
 		}
@@ -286,11 +306,11 @@ func (p *differ) mysqlDiffKey(srcTable, dstTable *MysqlTable) error {
 		var op string
 		if kp != nil {
 			if kp.Name != nk.Name {
-				if _, ok := srcMap[kp.Name]; !ok {
-					op = "add"
-				} else {
+				if _, ok := srcMap[nk.Name]; ok {
 					op = "modify"
-					ignoreMap[kp.Name] = true
+					ignoreMap[nk.Name] = true
+				} else {
+					op = "add"
 				}
 			} else if kp.Fields != nk.Fields || kp.Type != nk.Type {
 				op = "modify"
@@ -304,25 +324,25 @@ func (p *differ) mysqlDiffKey(srcTable, dstTable *MysqlTable) error {
 		}
 
 		if len(op) > 0 {
-			// key的modify,要先drop可以,再add回去
+			// key的modify,要先drop,再add回去
 			if op == "modify" {
-				p.addSql("alter table %s drop %s %s", dstTable.Name, nk.Type, nk.Name)
+				del = append(del, fmt.Sprintf("alter table %s drop %s %s", dstTable.Name, typeTrimmer(nk.Type), nk.Name))
 
 				// child
 				for _, cnm := range srcTable.ChildNames {
-					p.addSql("alter table %s drop %s %s", cnm, nk.Type, nk.Name)
+					del = append(del, fmt.Sprintf("alter table %s drop %s %s", cnm, typeTrimmer(nk.Type), nk.Name))
 				}
 			}
 
 			// add
 			// eg.: alter table xxx add keytype keyname (keyfield)
-			p.addSql("alter table %s add %s %s (%s)", dstTable.Name, nk.Type, nk.Name, nk.Fields)
+			add = append(add, fmt.Sprintf("alter table %s add %s %s (%s)", dstTable.Name, nk.Type, nk.Name, nk.Fields))
 
 			// child
 			for _, cnm := range srcTable.ChildNames {
-				p.addSql("alter table %s add %s %s (%s)", cnm, nk.Type, nk.Name, nk.Fields)
+				add = append(add, fmt.Sprintf("alter table %s add %s %s (%s)", cnm, nk.Type, nk.Name, nk.Fields))
 			}
 		}
 	}
-	return nil
+	return
 }

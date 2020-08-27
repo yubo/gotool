@@ -1,4 +1,6 @@
-all: run
+EXEC=$(GOPATH)/bin/mysqldiff
 
-run:
-	go run ./*.go --dsn1="root:1234@tcp(localhost:3306)/acd?charset=utf8" --dsn2="root:1234@tcp(localhost:3306)/acd1?charset=utf8"
+all: $(EXEC)
+
+$(EXEC): *.go
+	go build -o $@
