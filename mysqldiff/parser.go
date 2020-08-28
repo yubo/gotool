@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io/ioutil"
 	"regexp"
 	"sort"
@@ -63,7 +64,10 @@ func parseTablesFromFile(file string) ([]*MysqlTable, error) {
 
 	tables := make([]*MysqlTable, 0, len(tableNames))
 	for _, tbstr := range tableNames {
-		t := parseTableSql(tbstr)
+		t, err := parseTableSql(tbstr)
+		if err != nil {
+			return nil, err
+		}
 		tables = append(tables, t)
 	}
 	parseTableEx(tables)
@@ -84,7 +88,11 @@ func parseTables(db *orm.Db) ([]*MysqlTable, error) {
 		if err != nil {
 			return nil, err
 		}
-		tables = append(tables, parseTableSql(sql+";"))
+		t, err := parseTableSql(sql + ";")
+		if err != nil {
+			return nil, err
+		}
+		tables = append(tables, t)
 	}
 	parseTableEx(tables)
 	return tables, nil
@@ -95,10 +103,10 @@ func parseTable(db *orm.Db, tabName string) (*MysqlTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseTableSql(sql + ";"), nil
+	return parseTableSql(sql + ";")
 }
 
-func parseTableSql(tabSql string) *MysqlTable {
+func parseTableSql(tabSql string) (*MysqlTable, error) {
 	tabSql += "\n"
 
 	lines := lineRe.FindAllString(tabSql, -1)
@@ -200,7 +208,6 @@ func parseTableSql(tabSql string) *MysqlTable {
 							}
 						}
 					}
-
 					step = "t_end"
 					break
 				}
@@ -210,10 +217,9 @@ func parseTableSql(tabSql string) *MysqlTable {
 
 	// append to table list
 	if step != "t_end" {
-		panic("解析table错误, sql:\n" + tabSql)
-		return nil
+		return nil, errors.New("解析table错误, sql:\n" + tabSql)
 	}
-	return &t
+	return &t, nil
 }
 
 func parseTableEx(tbls []*MysqlTable) {

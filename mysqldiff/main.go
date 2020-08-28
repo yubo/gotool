@@ -11,8 +11,8 @@ import (
 // usage: mysqldiff --dsn1="root:1234@tcp(localhost:3306)/src_db?charset=utf8" --dsn2="root:1234@tcp(localhost:3306)/src_db?charset=utf8"
 
 type Config struct {
-	srcDsn string
-	dstDsn string
+	oDsn string
+	nDsn string
 	exec   bool
 }
 
@@ -30,12 +30,31 @@ func main() {
 	}
 
 	fs := rootCmd.PersistentFlags()
-	fs.StringVar(&cf.srcDsn, "dsn1", "", "dsn e.g. root:1234@tcp(localhost:3306)/src_db?charset=utf8")
-	fs.StringVar(&cf.dstDsn, "dsn2", "", "dsn e.g. root:1234@tcp(localhost:3306)/dst_db?charset=utf8")
+	fs.StringVar(&cf.oDsn, "dsn1", "", "dsn e.g. root:1234@tcp(localhost:3306)/src_db?charset=utf8")
+	fs.StringVar(&cf.nDsn, "dsn2", "", "dsn e.g. root:1234@tcp(localhost:3306)/dst_db?charset=utf8")
 	fs.BoolVar(&cf.exec, "exec", false, "exec diff sql")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+}
+
+func mysqldiff(cf *Config) error {
+	p := &Differ{Config: cf}
+	if err := p.Conn(); err != nil {
+		return err
+	}
+	defer p.Close()
+
+	if err := p.CompareDb(); err != nil {
+		return err
+	}
+
+	// exec
+	if err := p.Do(); err != nil {
+		return err
+	}
+
+	return nil
 }

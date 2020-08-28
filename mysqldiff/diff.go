@@ -5,112 +5,76 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/yubo/golib/orm"
-	"github.com/yubo/golib/status"
-	"github.com/yubo/golib/util"
 )
 
-type differ struct {
+type Differ struct {
 	*Config
-	srcDb        *orm.Db
-	dstDb        *orm.Db
-	addTables    []string
-	delTables    []string
-	eqTables     []string
-	sqls         []string
-	repairTables map[string][]string
-	err          error
+	oDb  *orm.Db
+	nDb  *orm.Db
+	sqls []string
 }
 
-func (p *differ) addSql(sql string, args ...interface{}) {
+func (p *Differ) addSql(sql string, args ...interface{}) {
 	p.sqls = append(p.sqls, fmt.Sprintf(sql, args...))
 }
 
-func mysqldiff(cf *Config) error {
-	p := &differ{Config: cf}
-	if err := p.conn(); err != nil {
-		return err
-	}
-	defer p.close()
-
-	if err := p.compareDb(); err != nil {
-		p.err = err
-		return err
-	}
-
-	// exec
-	if err := p.do(); err != nil {
-		p.err = err
-		return err
-	}
-
-	return nil
-}
-
-func (p *differ) do() error {
+func (p *Differ) Do() error {
 	for _, v := range p.sqls {
 		fmt.Println(v + ";")
 		if !p.exec {
 			continue
 		}
 
-		if err := p.srcDb.ExecErr(v); err != nil {
-			p.err = err
+		if err := p.oDb.ExecErr(v); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (p *differ) conn() error {
+func (p *Differ) Conn() error {
 	var err error
-	if p.srcDb, err = orm.DbOpen("mysql", p.srcDsn); err != nil {
+	if p.oDb, err = orm.DbOpen("mysql", p.oDsn); err != nil {
 		return err
 	}
-	if p.dstDb, err = orm.DbOpen("mysql", p.dstDsn); err != nil {
+	if p.nDb, err = orm.DbOpen("mysql", p.nDsn); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (p *differ) close() error {
-	if p.exec {
-		if p.err != nil {
-			p.srcDb.Rollback()
-		} else {
-			p.srcDb.Commit()
-		}
-	}
-	p.srcDb.Close()
-	p.dstDb.Close()
+func (p *Differ) Close() error {
+	p.oDb.Close()
+	p.nDb.Close()
 	return nil
 }
 
-func (p *differ) compareDb() error {
-	var srcTables []string
-	if err := p.srcDb.Query("show tables").Rows(&srcTables); err != nil && !status.NotFound(err) {
+func (p *Differ) CompareDb() error {
+	var oTab []string
+	if err := p.oDb.Query("show tables").Rows(&oTab); err != nil {
 		return err
 	}
 
-	var dstTables []string
-	if err := p.dstDb.Query("show tables").Rows(&dstTables); err != nil && !status.NotFound(err) {
+	var nTab []string
+	if err := p.nDb.Query("show tables").Rows(&nTab); err != nil {
 		return err
 	}
 
-	p.addTables, p.delTables, p.eqTables = util.Diff3(srcTables, dstTables)
+	add, drop, update := strDiff(oTab, nTab)
 
-	for _, v := range p.addTables {
-		if sql, err := getTableCreateSql(p.dstDb, v); err != nil {
+	for _, v := range add {
+		if sql, err := getTableCreateSql(p.nDb, v); err != nil {
 			return err
 		} else {
 			p.addSql(sql)
 		}
 	}
 
-	for _, v := range p.delTables {
+	for _, v := range drop {
 		p.addSql("drop table %s", v)
 	}
 
-	for _, v := range p.eqTables {
+	for _, v := range update {
 		if err := p.compareTable(v); err != nil {
 			return err
 		}
@@ -119,8 +83,8 @@ func (p *differ) compareDb() error {
 	return nil
 }
 
-func (p *differ) compareTable(tableName string) error {
-	d, err := parseTable(p.dstDb, tableName)
+func (p *Differ) compareTable(tableName string) error {
+	d, err := parseTable(p.nDb, tableName)
 	if err != nil {
 		return err
 	}
@@ -128,25 +92,25 @@ func (p *differ) compareTable(tableName string) error {
 		return nil
 	}
 
-	s, err := parseTable(p.srcDb, tableName)
+	s, err := parseTable(p.oDb, tableName)
 	if err != nil {
 		return err
 	}
 
-	// update
-
-	// drop , del
 	add, drop, err := p.mysqlDiffKey(s, d)
 	if err != nil {
 		return err
 	}
 
+	// 1. drop index
 	for _, v := range drop {
 		p.addSql(v)
 	}
+	// 2. drop & add field
 	if err := p.mysqlDiffField(s, d); err != nil {
 		return err
 	}
+	// 3. add index
 	for _, v := range add {
 		p.addSql(v)
 	}
@@ -160,27 +124,26 @@ func getTableCreateSql(db *orm.Db, table string) (sql string, err error) {
 	return
 }
 
-func (p *differ) mysqlDiffField(srcTable, dstTable *MysqlTable) error {
-
-	oFlds := srcTable.Fields
-	nFlds := dstTable.Fields
+func (p *Differ) mysqlDiffField(oTab, nTab *MysqlTable) error {
+	oFlds := oTab.Fields
+	nFlds := nTab.Fields
 	oMap := make(map[string]string, len(oFlds))
 	nMap := make(map[string]string, len(nFlds))
 	for _, f := range nFlds {
 		nMap[f.Name] = f.Desc
 	}
 
-	// 先drop
+	// drop
 	ignoreMap := make(map[string]bool)
 	for _, f := range oFlds {
 		if _, ok := nMap[f.Name]; !ok {
 			ignoreMap[f.Name] = true
 
 			// mother
-			p.addSql("alter table %s %s `%s`", srcTable.Name, "drop", f.Name)
+			p.addSql("alter table %s %s `%s`", oTab.Name, "drop", f.Name)
 
 			// child
-			for _, cnm := range srcTable.ChildNames {
+			for _, cnm := range oTab.ChildNames {
 				p.addSql("alter table %s %s `%s`", cnm, "drop", f.Name)
 			}
 		} else {
@@ -188,20 +151,19 @@ func (p *differ) mysqlDiffField(srcTable, dstTable *MysqlTable) error {
 		}
 	}
 
-	// 新增的和变化的
+	// update | add
 	oIdx := 0
 	lastFld := ""
 	for _, nf := range nFlds {
 		// 找一个基准
 		var fp *FieldInfo
-		for oi, f := range oFlds {
-			if oi >= oIdx {
-				if ignoreMap[f.Name] {
-					oIdx += 1
-				} else {
-					fp = &f
-					break
-				}
+		for i := oIdx; i < len(oFlds); i++ {
+			f := oFlds[i]
+			if ignoreMap[f.Name] {
+				oIdx += 1
+			} else {
+				fp = &f
+				break
 			}
 		}
 
@@ -239,10 +201,10 @@ func (p *differ) mysqlDiffField(srcTable, dstTable *MysqlTable) error {
 			}
 
 			// mother
-			p.addSql("alter table %s %s `%s` %s %s", dstTable.Name, op, nf.Name, nf.Desc, pos)
+			p.addSql("alter table %s %s `%s` %s %s", nTab.Name, op, nf.Name, nf.Desc, pos)
 
 			//child
-			for _, cnm := range dstTable.ChildNames {
+			for _, cnm := range nTab.ChildNames {
 				p.addSql("alter table %s %s `%s` %s %s", cnm, op, nf.Name, nf.Desc, pos)
 			}
 		}
@@ -259,54 +221,51 @@ func typeTrimmer(typ string) string {
 	}
 }
 
-func (p *differ) mysqlDiffKey(srcTable, dstTable *MysqlTable) (add, del []string, err error) {
-	srcKeys := srcTable.Keys
-	dstKeys := dstTable.Keys
-	srcMap := make(map[string]bool, len(srcKeys))
-	dstMap := make(map[string]bool, len(dstKeys))
-	for _, k := range dstKeys {
-		dstMap[k.Name] = true
+func (p *Differ) mysqlDiffKey(oTab, nTab *MysqlTable) (add, del []string, err error) {
+	oKeys := oTab.Keys
+	nKeys := nTab.Keys
+	oMap := make(map[string]bool, len(oKeys))
+	nMap := make(map[string]bool, len(nKeys))
+	for _, k := range nKeys {
+		nMap[k.Name] = true
 	}
 
-	// 先drop
+	// drop
 	ignoreMap := make(map[string]bool)
-	for _, k := range srcKeys {
-		if _, ok := dstMap[k.Name]; !ok {
+	for _, k := range oKeys {
+		if _, ok := nMap[k.Name]; !ok {
 			ignoreMap[k.Name] = true
 
 			// mother
 			// eg.: alter table xxx drop keytype keyname
-			del = append(del, fmt.Sprintf("alter table %s drop %s %s", srcTable.Name, typeTrimmer(k.Type), k.Name))
+			del = append(del, fmt.Sprintf("alter table %s drop %s %s", oTab.Name, typeTrimmer(k.Type), k.Name))
 
 			// child
-			for _, cnm := range srcTable.ChildNames {
+			for _, cnm := range oTab.ChildNames {
 				del = append(del, fmt.Sprintf("alter table %s drop %s %s", cnm, typeTrimmer(k.Type), k.Name))
 			}
 		} else {
-			srcMap[k.Name] = true
+			oMap[k.Name] = true
 		}
 	}
 
-	// 新增的和变化的
 	oIdx := 0
-	for _, nk := range dstKeys {
-		// 找一个基准
+	for _, nk := range nKeys {
 		var kp *KeyInfo
-		for oi, k := range srcKeys {
-			if oi >= oIdx {
-				if ignoreMap[k.Name] {
-					oIdx += 1
-				} else {
-					kp = &k
-					break
-				}
+		for i := oIdx; i < len(oKeys); i++ {
+			k := oKeys[i]
+			if ignoreMap[k.Name] {
+				oIdx += 1
+			} else {
+				kp = &k
+				break
 			}
 		}
 
 		var op string
 		if kp != nil {
 			if kp.Name != nk.Name {
-				if _, ok := srcMap[nk.Name]; ok {
+				if _, ok := oMap[nk.Name]; ok {
 					op = "modify"
 					ignoreMap[nk.Name] = true
 				} else {
@@ -324,25 +283,51 @@ func (p *differ) mysqlDiffKey(srcTable, dstTable *MysqlTable) (add, del []string
 		}
 
 		if len(op) > 0 {
-			// key的modify,要先drop,再add回去
+			// key modify, drop -> add
 			if op == "modify" {
-				del = append(del, fmt.Sprintf("alter table %s drop %s %s", dstTable.Name, typeTrimmer(nk.Type), nk.Name))
+				del = append(del, fmt.Sprintf("alter table %s drop %s %s", nTab.Name, typeTrimmer(nk.Type), nk.Name))
 
 				// child
-				for _, cnm := range srcTable.ChildNames {
+				for _, cnm := range oTab.ChildNames {
 					del = append(del, fmt.Sprintf("alter table %s drop %s %s", cnm, typeTrimmer(nk.Type), nk.Name))
 				}
 			}
 
 			// add
 			// eg.: alter table xxx add keytype keyname (keyfield)
-			add = append(add, fmt.Sprintf("alter table %s add %s %s (%s)", dstTable.Name, nk.Type, nk.Name, nk.Fields))
+			add = append(add, fmt.Sprintf("alter table %s add %s %s (%s)", nTab.Name, nk.Type, nk.Name, nk.Fields))
 
 			// child
-			for _, cnm := range srcTable.ChildNames {
+			for _, cnm := range oTab.ChildNames {
 				add = append(add, fmt.Sprintf("alter table %s add %s %s (%s)", cnm, nk.Type, nk.Name, nk.Fields))
 			}
 		}
 	}
+	return
+}
+
+func strDiff(o, n []string) (add, del, eq []string) {
+	s := map[string]bool{}
+	d := map[string]bool{}
+
+	for _, v := range o {
+		s[v] = true
+	}
+
+	for _, v := range n {
+		d[v] = true
+		if !s[v] {
+			add = append(add, v)
+		} else {
+			eq = append(eq, v)
+		}
+	}
+
+	for _, v := range o {
+		if !d[v] {
+			del = append(del, v)
+		}
+	}
+
 	return
 }

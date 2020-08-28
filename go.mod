@@ -8,6 +8,7 @@ require (
 	github.com/mattn/go-sqlite3 v2.0.3+incompatible // indirect
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/spf13/cobra v1.0.0
+	github.com/stretchr/testify v1.6.1
 	github.com/yubo/golib v0.0.0-20200827083130-39861c718418
 	golang.org/x/net v0.0.0-20200813134508-3edf25e44fcc
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
