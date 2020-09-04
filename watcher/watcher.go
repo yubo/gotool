@@ -1,3 +1,6 @@
+// Copyright 2015-2020 yubo. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 package main
 
 import (
@@ -13,8 +16,6 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/spf13/cobra"
-	"github.com/yubo/golib/logs"
 	"k8s.io/klog/v2"
 )
 
@@ -29,6 +30,21 @@ type config struct {
 	paths         []string
 }
 
+type StrFlags []string
+
+func (s *StrFlags) String() string {
+	return fmt.Sprintf("%s", *s)
+}
+
+func (s *StrFlags) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
+func (s *StrFlags) Type() string {
+	return "strflags"
+}
+
 type watcher struct {
 	*config
 	*fsnotify.Watcher
@@ -36,7 +52,6 @@ type watcher struct {
 
 	cmd       *exec.Cmd
 	eventTime map[string]int64
-	//currpath  string
 }
 
 func NewWatcher(cf *config) (*watcher, error) {
@@ -60,12 +75,10 @@ func NewWatcher(cf *config) (*watcher, error) {
 	watcher := &watcher{
 		config:    cf,
 		eventTime: make(map[string]int64),
-		//currpath:  currpath,
 	}
 
 	// expend currpath
 	dir, _ := os.Getwd()
-	//os.Chdir(currpath)
 	watcher.readAppDirectories(dir)
 
 	return watcher, nil
@@ -92,7 +105,7 @@ func (p *watcher) Do() (done <-chan error, err error) {
 				ticker = time.NewTicker(p.delay2)
 			case <-ticker.C:
 				if pending {
-					p.AutoBuild()
+					p.autoBuild()
 					pending = false
 				}
 			}
@@ -134,12 +147,12 @@ func (p *watcher) Do() (done <-chan error, err error) {
 			klog.Fatalf("Failed to watch directory: %s", err)
 		}
 	}
-	p.AutoBuild()
+	p.autoBuild()
 	return
 }
 
-// AutoBuild builds the specified set of files
-func (p *watcher) AutoBuild() {
+// autoBuild builds the specified set of files
+func (p *watcher) autoBuild() {
 	p.Lock()
 	defer p.Unlock()
 
@@ -154,11 +167,11 @@ func (p *watcher) AutoBuild() {
 
 	klog.V(3).Info(string(output))
 	klog.V(3).Info("Built Successfully!")
-	p.Restart()
+	p.restart()
 }
 
-// Kill kills the running command process
-func (p *watcher) Kill() {
+// kill kills the running command process
+func (p *watcher) kill() {
 	defer func() {
 		if e := recover(); e != nil {
 			klog.Infof("Kill recover: %s", e)
@@ -173,11 +186,11 @@ func (p *watcher) Kill() {
 	}
 }
 
-// Restart kills the running command process and starts it again
-func (p *watcher) Restart() {
+// restart kills the running command process and starts it again
+func (p *watcher) restart() {
 	klog.V(3).Infof("Kill running process %s %d\n", FILE(), LINE())
-	p.Kill()
-	go p.Start()
+	p.kill()
+	go p.start()
 }
 
 func (p *watcher) getCmd() string {
@@ -189,8 +202,8 @@ func (p *watcher) getCmd() string {
 	return strings.TrimSpace(strings.Split(string(output), "\n")[0])
 }
 
-// Start starts the command process
-func (p *watcher) Start() {
+// start starts the command process
+func (p *watcher) start() {
 	cmd := p.getCmd()
 	p.cmd = command(cmd)
 	p.cmd.Stdout = os.Stdout
@@ -288,47 +301,6 @@ func GetFileModTime(path string) int64 {
 	return fi.ModTime().Unix()
 }
 
-func main() {
-	logs.InitLogs()
-
-	var cf config
-	var rootCmd = &cobra.Command{
-		Use:   "watcher",
-		Short: "watcher is a tool which watch files change and execute some command",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return watch(&cf)
-		},
-	}
-
-	fs := rootCmd.PersistentFlags()
-
-	fs.VarP(&cf.extraPaths, "list", "i", "list paths to include extra.")
-	fs.VarP(&cf.excludedPaths, "exclude", "e", "List of paths to exclude.(default [vendor])")
-	fs.VarP(&cf.fileExts, "file", "f", "List of file extension(default [.go])")
-	fs.Int64VarP(&cf.delay, "delay", "d", 500, "delay time when recv fs notify(Millisecond)")
-	fs.StringVar(&cf.cmd1, "c1", "make", "run this cmd(c1) when recv inotify event")
-	fs.StringVar(&cf.cmd2, "c2", "make -s devrun", "invoke the cmd(c2) output when c1 is successfully executed")
-
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-}
-
-func watch(cf *config) error {
-
-	watcher, err := NewWatcher(cf)
-	if err != nil {
-		return err
-	}
-
-	if done, err := watcher.Do(); err != nil {
-		return err
-	} else {
-		return <-done
-	}
-}
-
 // __FILE__ returns the file name in which the function was invoked
 func FILE() string {
 	_, file, _, _ := runtime.Caller(1)
@@ -339,21 +311,6 @@ func FILE() string {
 func LINE() int {
 	_, _, line, _ := runtime.Caller(1)
 	return line
-}
-
-type StrFlags []string
-
-func (s *StrFlags) String() string {
-	return fmt.Sprintf("%s", *s)
-}
-
-func (s *StrFlags) Set(value string) error {
-	*s = append(*s, value)
-	return nil
-}
-
-func (s *StrFlags) Type() string {
-	return "strflags"
 }
 
 func command(s string) *exec.Cmd {

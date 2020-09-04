@@ -1,3 +1,6 @@
+// Copyright 2020 yubo. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 package main
 
 import (
@@ -13,7 +16,7 @@ import (
 type Config struct {
 	oDsn string
 	nDsn string
-	exec   bool
+	exec bool
 }
 
 func main() {
