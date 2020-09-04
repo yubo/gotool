@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -14,38 +13,320 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/golang/glog"
+	"github.com/spf13/cobra"
+	"github.com/yubo/golib/logs"
+	"k8s.io/klog/v2"
 )
 
-var (
-	currpath      string
-	cmd           *exec.Cmd
+type config struct {
+	extraPaths    StrFlags
 	excludedPaths StrFlags
 	fileExts      StrFlags
-	extraPaths    StrFlags
 	delay         int64
-	state         sync.Mutex
-	eventTime     = make(map[string]int64)
-	scheduleTime  time.Time
-)
-
-func init() {
-	currpath, _ = os.Getwd()
-	flag.Var(&extraPaths, "i", "list paths to include extra.")
-	flag.Var(&excludedPaths, "e", "List of paths to exclude.(default [vendor])")
-	flag.Var(&fileExts, "f", "List of file extension(default [.go])")
-	flag.Int64Var(&delay, "d", 500, "delay time when recv fs notify(Millisecond)")
+	cmd1          string
+	cmd2          string
+	delay2        time.Duration
+	paths         []string
 }
 
-type StrFlags []string
+type watcher struct {
+	*config
+	*fsnotify.Watcher
+	sync.Mutex
 
-func (s *StrFlags) String() string {
-	return fmt.Sprintf("%s", *s)
+	cmd       *exec.Cmd
+	eventTime map[string]int64
+	//currpath  string
 }
 
-func (s *StrFlags) Set(value string) error {
-	*s = append(*s, value)
-	return nil
+func NewWatcher(cf *config) (*watcher, error) {
+	cf.delay2 = time.Millisecond * time.Duration(cf.delay)
+
+	if len(cf.excludedPaths) == 0 {
+		cf.excludedPaths.Set("vendor")
+	}
+
+	if len(cf.fileExts) == 0 {
+		cf.fileExts.Set(".go")
+	}
+
+	cf.paths = []string{"."}
+	cf.paths = append(cf.paths, cf.extraPaths...)
+
+	klog.Infof("excludedPaths %v", cf.excludedPaths)
+	klog.Infof("watch file exts %v", cf.fileExts)
+	klog.Infof("include paths %v", cf.paths)
+
+	watcher := &watcher{
+		config:    cf,
+		eventTime: make(map[string]int64),
+		//currpath:  currpath,
+	}
+
+	// expend currpath
+	dir, _ := os.Getwd()
+	//os.Chdir(currpath)
+	watcher.readAppDirectories(dir)
+
+	return watcher, nil
+
+}
+
+// NewWatcher starts an fsnotify Watcher on the specified paths
+func (p *watcher) Do() (done <-chan error, err error) {
+	if p.Watcher, err = fsnotify.NewWatcher(); err != nil {
+		return nil, fmt.Errorf("Failed to create watcher: %s", err)
+	}
+
+	done = make(chan error, 0)
+	buildEvent := make(chan struct{}, 10)
+
+	go func() {
+		pending := false
+		ticker := time.NewTicker(p.delay2)
+		for {
+			select {
+			case <-buildEvent:
+				pending = true
+				ticker.Stop()
+				ticker = time.NewTicker(p.delay2)
+			case <-ticker.C:
+				if pending {
+					p.AutoBuild()
+					pending = false
+				}
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case e := <-p.Events:
+				isBuild := true
+
+				if !p.shouldWatchFileWithExtension(e.Name) {
+					continue
+				}
+
+				mt := GetFileModTime(e.Name)
+				if t := p.eventTime[e.Name]; mt == t {
+					klog.V(7).Info(e.String())
+					isBuild = false
+				}
+
+				p.eventTime[e.Name] = mt
+
+				if isBuild {
+					klog.V(7).Infof("Event fired: %s", e)
+					buildEvent <- struct{}{}
+				}
+			case err := <-p.Errors:
+				klog.Warningf("Watcher error: %s", err.Error()) // No need to exit here
+			}
+		}
+	}()
+
+	klog.Info("Initializing watcher...")
+	for _, path := range p.paths {
+		klog.V(6).Infof("Watching: %s", path)
+		if err := p.Add(path); err != nil {
+			klog.Fatalf("Failed to watch directory: %s", err)
+		}
+	}
+	p.AutoBuild()
+	return
+}
+
+// AutoBuild builds the specified set of files
+func (p *watcher) AutoBuild() {
+	p.Lock()
+	defer p.Unlock()
+
+	cmd := command(p.cmd1)
+	output, err := cmd.CombinedOutput()
+	klog.Info("##################################################################################\n")
+	if err != nil {
+		klog.Error(string(output))
+		klog.Error(err)
+		return
+	}
+
+	klog.V(3).Info(string(output))
+	klog.V(3).Info("Built Successfully!")
+	p.Restart()
+}
+
+// Kill kills the running command process
+func (p *watcher) Kill() {
+	defer func() {
+		if e := recover(); e != nil {
+			klog.Infof("Kill recover: %s", e)
+		}
+	}()
+	if p.cmd != nil && p.cmd.Process != nil {
+		klog.V(3).Infof("kill %d\n", p.cmd.Process.Pid)
+		err := p.cmd.Process.Kill()
+		if err != nil {
+			klog.V(3).Infof("Error while killing cmd process: %s", err)
+		}
+	}
+}
+
+// Restart kills the running command process and starts it again
+func (p *watcher) Restart() {
+	klog.V(3).Infof("Kill running process %s %d\n", FILE(), LINE())
+	p.Kill()
+	go p.Start()
+}
+
+func (p *watcher) getCmd() string {
+	cmd := command(p.cmd2)
+	output, err := cmd.Output()
+	if err != nil {
+		klog.Errorf("run %s err %s", p.cmd2, err)
+	}
+	return strings.TrimSpace(strings.Split(string(output), "\n")[0])
+}
+
+// Start starts the command process
+func (p *watcher) Start() {
+	cmd := p.getCmd()
+	p.cmd = command(cmd)
+	p.cmd.Stdout = os.Stdout
+	p.cmd.Stderr = os.Stderr
+
+	go func() {
+		err := p.cmd.Run()
+		if err != nil {
+			klog.Infof("process(%s) exit(%v)", cmd, err)
+		} else {
+			klog.Infof("process exit(0)")
+		}
+
+	}()
+
+	time.Sleep(time.Second)
+	klog.V(3).Infof("%s running...", cmd)
+}
+
+// shouldWatchFileWithExtension returns true if the name of the file
+// hash a suffix that should be watched.
+func (p *watcher) shouldWatchFileWithExtension(name string) bool {
+	for _, s := range p.fileExts {
+		if strings.HasSuffix(name, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// If a file is excluded
+func (p *watcher) isExcluded(file string) bool {
+	for _, p := range p.excludedPaths {
+		absP, err := filepath.Abs(p)
+		if err != nil {
+			klog.Errorf("Cannot get absolute path of '%s'", p)
+			continue
+		}
+		absFilePath, err := filepath.Abs(file)
+		if err != nil {
+			klog.Errorf("Cannot get absolute path of '%s'", file)
+			break
+		}
+		if strings.HasPrefix(absFilePath, absP) {
+			klog.V(4).Infof("'%s' is not being watched", file)
+			return true
+		}
+	}
+	return false
+}
+
+func (p *watcher) readAppDirectories(directory string) {
+	fileInfos, err := ioutil.ReadDir(directory)
+	if err != nil {
+		return
+	}
+
+	useDirectory := false
+	for _, fileInfo := range fileInfos {
+		if p.isExcluded(path.Join(directory, fileInfo.Name())) {
+			continue
+		}
+
+		if fileInfo.IsDir() && fileInfo.Name()[0] != '.' {
+			p.readAppDirectories(directory + "/" + fileInfo.Name())
+			continue
+		}
+
+		if useDirectory {
+			continue
+		}
+
+		if p.shouldWatchFileWithExtension(fileInfo.Name()) {
+			p.paths = append(p.paths, directory)
+			useDirectory = true
+		}
+	}
+}
+
+// GetFileModTime returns unix timestamp of `os.File.ModTime` for the given path.
+func GetFileModTime(path string) int64 {
+	path = strings.Replace(path, "\\", "/", -1)
+	f, err := os.Open(path)
+	if err != nil {
+		//klog.Errorf("Failed to open file on '%s': %s", path, err)
+		return time.Now().Unix()
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		klog.Errorf("Failed to get file stats: %s", err)
+		return time.Now().Unix()
+	}
+	return fi.ModTime().Unix()
+}
+
+func main() {
+	logs.InitLogs()
+
+	var cf config
+	var rootCmd = &cobra.Command{
+		Use:   "watcher",
+		Short: "watcher is a tool which watch files change and execute some command",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return watch(&cf)
+		},
+	}
+
+	fs := rootCmd.PersistentFlags()
+
+	fs.VarP(&cf.extraPaths, "list", "i", "list paths to include extra.")
+	fs.VarP(&cf.excludedPaths, "exclude", "e", "List of paths to exclude.(default [vendor])")
+	fs.VarP(&cf.fileExts, "file", "f", "List of file extension(default [.go])")
+	fs.Int64VarP(&cf.delay, "delay", "d", 500, "delay time when recv fs notify(Millisecond)")
+	fs.StringVar(&cf.cmd1, "c1", "make", "run this cmd(c1) when recv inotify event")
+	fs.StringVar(&cf.cmd2, "c2", "make -s devrun", "invoke the cmd(c2) output when c1 is successfully executed")
+
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}
+
+func watch(cf *config) error {
+
+	watcher, err := NewWatcher(cf)
+	if err != nil {
+		return err
+	}
+
+	if done, err := watcher.Do(); err != nil {
+		return err
+	} else {
+		return <-done
+	}
 }
 
 // __FILE__ returns the file name in which the function was invoked
@@ -60,241 +341,22 @@ func LINE() int {
 	return line
 }
 
-// NewWatcher starts an fsnotify Watcher on the specified paths
-func NewWatcher(delay time.Duration, paths []string) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		glog.Fatalf("Failed to create watcher: %s", err)
-	}
+type StrFlags []string
 
-	buildEvent := make(chan struct{}, 10)
-
-	go func() {
-		pending := false
-		ticker := time.NewTicker(delay)
-		for {
-			select {
-			case <-buildEvent:
-				pending = true
-				ticker.Stop()
-				ticker = time.NewTicker(delay)
-			case <-ticker.C:
-				if pending {
-					AutoBuild()
-					pending = false
-				}
-			}
-		}
-	}()
-
-	go func() {
-		for {
-			select {
-			case e := <-watcher.Events:
-				isBuild := true
-
-				if !shouldWatchFileWithExtension(e.Name) {
-					continue
-				}
-
-				mt := GetFileModTime(e.Name)
-				if t := eventTime[e.Name]; mt == t {
-					glog.V(7).Info(e.String())
-					isBuild = false
-				}
-
-				eventTime[e.Name] = mt
-
-				if isBuild {
-					glog.V(7).Infof("Event fired: %s", e)
-					buildEvent <- struct{}{}
-				}
-			case err := <-watcher.Errors:
-				glog.Warningf("Watcher error: %s", err.Error()) // No need to exit here
-			}
-		}
-	}()
-
-	glog.Info("Initializing watcher...")
-	for _, path := range paths {
-		glog.V(6).Infof("Watching: %s", path)
-		err = watcher.Add(path)
-		if err != nil {
-			glog.Fatalf("Failed to watch directory: %s", err)
-		}
-	}
+func (s *StrFlags) String() string {
+	return fmt.Sprintf("%s", *s)
 }
 
-// AutoBuild builds the specified set of files
-func AutoBuild() {
-	state.Lock()
-	defer state.Unlock()
-
-	os.Chdir(currpath)
-
-	_cmd := exec.Command("make")
-	output, err := _cmd.CombinedOutput()
-	glog.Info("##################################################################################\n")
-	if err != nil {
-		glog.Error(string(output))
-		glog.Error(err)
-		return
-	}
-
-	glog.V(3).Info(string(output))
-	glog.V(3).Info("Built Successfully!")
-	Restart()
+func (s *StrFlags) Set(value string) error {
+	*s = append(*s, value)
+	return nil
 }
 
-// Kill kills the running command process
-func Kill() {
-	defer func() {
-		if e := recover(); e != nil {
-			glog.Infof("Kill recover: %s", e)
-		}
-	}()
-	if cmd != nil && cmd.Process != nil {
-		glog.V(3).Infof("kill %d\n", cmd.Process.Pid)
-		err := cmd.Process.Kill()
-		if err != nil {
-			glog.V(3).Infof("Error while killing cmd process: %s", err)
-		}
-	}
+func (s *StrFlags) Type() string {
+	return "strflags"
 }
 
-// Restart kills the running command process and starts it again
-func Restart() {
-	glog.V(3).Infof("Kill running process %s %d\n", FILE(), LINE())
-	Kill()
-	go Start()
-}
-
-func getCmd() string {
-	_cmd := exec.Command("make", "-s", "devrun")
-	output, _ := _cmd.Output()
-	return strings.TrimSpace(strings.Split(string(output), "\n")[0])
-}
-
-// Start starts the command process
-func Start() {
-	c := strings.Fields(getCmd())
-	cmd = exec.Command(c[0], c[1:]...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	go func() {
-		err := cmd.Run()
-		if err != nil {
-			glog.Infof("process(%s) exit(%v)", strings.Join(c, " "), err)
-		} else {
-			glog.Infof("process exit(0)")
-		}
-
-	}()
-
-	time.Sleep(time.Second)
-	glog.V(3).Infof("%v running...", c)
-}
-
-// shouldWatchFileWithExtension returns true if the name of the file
-// hash a suffix that should be watched.
-func shouldWatchFileWithExtension(name string) bool {
-	for _, s := range fileExts {
-		if strings.HasSuffix(name, s) {
-			return true
-		}
-	}
-	return false
-}
-
-// If a file is excluded
-func isExcluded(file string) bool {
-	for _, p := range excludedPaths {
-		absP, err := filepath.Abs(p)
-		if err != nil {
-			glog.Errorf("Cannot get absolute path of '%s'", p)
-			continue
-		}
-		absFilePath, err := filepath.Abs(file)
-		if err != nil {
-			glog.Errorf("Cannot get absolute path of '%s'", file)
-			break
-		}
-		if strings.HasPrefix(absFilePath, absP) {
-			glog.V(4).Infof("'%s' is not being watched", file)
-			return true
-		}
-	}
-	return false
-}
-
-func readAppDirectories(directory string, paths *[]string) {
-	fileInfos, err := ioutil.ReadDir(directory)
-	if err != nil {
-		return
-	}
-
-	useDirectory := false
-	for _, fileInfo := range fileInfos {
-		if isExcluded(path.Join(directory, fileInfo.Name())) {
-			continue
-		}
-
-		if fileInfo.IsDir() && fileInfo.Name()[0] != '.' {
-			readAppDirectories(directory+"/"+fileInfo.Name(), paths)
-			continue
-		}
-
-		if useDirectory {
-			continue
-		}
-
-		if shouldWatchFileWithExtension(fileInfo.Name()) {
-			*paths = append(*paths, directory)
-			useDirectory = true
-		}
-	}
-}
-
-// GetFileModTime returns unix timestamp of `os.File.ModTime` for the given path.
-func GetFileModTime(path string) int64 {
-	path = strings.Replace(path, "\\", "/", -1)
-	f, err := os.Open(path)
-	if err != nil {
-		//glog.Errorf("Failed to open file on '%s': %s", path, err)
-		return time.Now().Unix()
-	}
-	defer f.Close()
-
-	fi, err := f.Stat()
-	if err != nil {
-		glog.Errorf("Failed to get file stats: %s", err)
-		return time.Now().Unix()
-	}
-	return fi.ModTime().Unix()
-}
-
-func main() {
-	paths := []string{"."}
-
-	flag.Parse()
-
-	if len(excludedPaths) == 0 {
-		excludedPaths.Set("vendor")
-	}
-
-	if len(fileExts) == 0 {
-		fileExts.Set(".go")
-	}
-
-	paths = append(paths, extraPaths...)
-
-	glog.Infof("excludedPaths %v", excludedPaths)
-	glog.Infof("watch file exts %v", fileExts)
-	glog.Infof("include paths %v", paths)
-
-	readAppDirectories(currpath, &paths)
-	NewWatcher(time.Millisecond*time.Duration(delay), paths)
-	AutoBuild()
-	select {}
+func command(s string) *exec.Cmd {
+	c := strings.Fields(s)
+	return exec.Command(c[0], c[1:]...)
 }
