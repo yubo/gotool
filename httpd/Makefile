@@ -1,4 +1,4 @@
-.PHONY: dev devrun clean
+.PHONY: dev devrun clean tool
 TARGET=$(GOPATH)/bin/httpd
 
 all: $(TARGET)
@@ -14,3 +14,6 @@ dev:
 
 clean:
 	rm -f $(TARGET)
+
+tool:
+	go get -u github.com/yubo/gotool/watcher
