@@ -1,3 +1,4 @@
+.PHONY: dev devrun
 EXEC=$(GOPATH)/bin/watcher
 
 all: $(EXEC)

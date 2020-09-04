@@ -17,6 +17,8 @@ func main() {
 	port := flag.String("p", "8000", "server mode")
 	dir := flag.String("d", ".", "server mode")
 
+	flag.Parse()
+
 	fs := http.FileServer(http.Dir(*dir))
 	http.Handle("/", fs)
 

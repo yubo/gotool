@@ -12,7 +12,14 @@ import (
 )
 
 func LinesInFile(fileName string) ([]string, error) {
-	f, err := os.Open(fileName)
+	var f *os.File
+	var err error
+
+	if fileName == "-" {
+		f = os.Stdin
+	} else {
+		f, err = os.Open(fileName)
+	}
 	if err != nil {
 		return nil, err
 	}
