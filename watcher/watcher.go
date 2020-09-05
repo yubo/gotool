@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -23,10 +22,10 @@ type config struct {
 	extraPaths    StrFlags
 	excludedPaths StrFlags
 	fileExts      StrFlags
-	delay         int64
+	delayMs       int64
+	delay         time.Duration
 	cmd1          string
 	cmd2          string
-	delay2        time.Duration
 	paths         []string
 }
 
@@ -55,7 +54,7 @@ type watcher struct {
 }
 
 func NewWatcher(cf *config) (*watcher, error) {
-	cf.delay2 = time.Millisecond * time.Duration(cf.delay)
+	cf.delay = time.Millisecond * time.Duration(cf.delayMs)
 
 	if len(cf.excludedPaths) == 0 {
 		cf.excludedPaths.Set("vendor")
@@ -92,20 +91,22 @@ func (p *watcher) Do() (done <-chan error, err error) {
 	}
 
 	done = make(chan error, 0)
-	buildEvent := make(chan struct{}, 10)
+	buildEvent := make(chan *fsnotify.Event, 10)
 
 	go func() {
+		var ev *fsnotify.Event
 		pending := false
-		ticker := time.NewTicker(p.delay2)
+		ticker := time.NewTicker(p.delay)
 		for {
 			select {
-			case <-buildEvent:
+			case e := <-buildEvent:
 				pending = true
+				ev = e
 				ticker.Stop()
-				ticker = time.NewTicker(p.delay2)
+				ticker = time.NewTicker(p.delay)
 			case <-ticker.C:
 				if pending {
-					p.autoBuild()
+					p.autoBuild(ev)
 					pending = false
 				}
 			}
@@ -116,7 +117,7 @@ func (p *watcher) Do() (done <-chan error, err error) {
 		for {
 			select {
 			case e := <-p.Events:
-				isBuild := true
+				build := true
 
 				if !p.shouldWatchFileWithExtension(e.Name) {
 					continue
@@ -125,14 +126,14 @@ func (p *watcher) Do() (done <-chan error, err error) {
 				mt := GetFileModTime(e.Name)
 				if t := p.eventTime[e.Name]; mt == t {
 					klog.V(7).Info(e.String())
-					isBuild = false
+					build = false
 				}
 
 				p.eventTime[e.Name] = mt
 
-				if isBuild {
+				if build {
 					klog.V(7).Infof("Event fired: %s", e)
-					buildEvent <- struct{}{}
+					buildEvent <- &e
 				}
 			case err := <-p.Errors:
 				klog.Warningf("Watcher error: %s", err.Error()) // No need to exit here
@@ -147,18 +148,18 @@ func (p *watcher) Do() (done <-chan error, err error) {
 			klog.Fatalf("Failed to watch directory: %s", err)
 		}
 	}
-	p.autoBuild()
+	p.autoBuild(&fsnotify.Event{Name: "first time", Op: fsnotify.Create})
 	return
 }
 
 // autoBuild builds the specified set of files
-func (p *watcher) autoBuild() {
+func (p *watcher) autoBuild(e *fsnotify.Event) {
 	p.Lock()
 	defer p.Unlock()
 
 	cmd := command(p.cmd1)
 	output, err := cmd.CombinedOutput()
-	klog.Info("##################################################################################\n")
+	klog.Infof("---------- %s -------", e)
 	if err != nil {
 		klog.Error(string(output))
 		klog.Error(err)
@@ -178,7 +179,7 @@ func (p *watcher) kill() {
 		}
 	}()
 	if p.cmd != nil && p.cmd.Process != nil {
-		klog.V(3).Infof("kill %d\n", p.cmd.Process.Pid)
+		klog.V(3).Infof("Process %d will be killing", p.cmd.Process.Pid)
 		err := p.cmd.Process.Kill()
 		if err != nil {
 			klog.V(3).Infof("Error while killing cmd process: %s", err)
@@ -188,7 +189,6 @@ func (p *watcher) kill() {
 
 // restart kills the running command process and starts it again
 func (p *watcher) restart() {
-	klog.V(3).Infof("Kill running process %s %d\n", FILE(), LINE())
 	p.kill()
 	go p.start()
 }
@@ -209,18 +209,20 @@ func (p *watcher) start() {
 	p.cmd.Stdout = os.Stdout
 	p.cmd.Stderr = os.Stderr
 
+	if err := p.cmd.Start(); err != nil {
+		klog.Infof("execute %s err %s", cmd, err)
+		return
+	}
+
+	klog.V(3).Infof("Process %d execute %s", p.cmd.Process.Pid, cmd)
+
 	go func() {
-		err := p.cmd.Run()
-		if err != nil {
-			klog.Infof("process(%s) exit(%v)", cmd, err)
+		if err := p.cmd.Wait(); err != nil {
+			klog.Infof("Process %d exit %v", p.cmd.Process.Pid, err)
 		} else {
-			klog.Infof("process exit(0)")
+			klog.Infof("process exit 0")
 		}
-
 	}()
-
-	time.Sleep(time.Second)
-	klog.V(3).Infof("%s running...", cmd)
 }
 
 // shouldWatchFileWithExtension returns true if the name of the file
@@ -299,18 +301,6 @@ func GetFileModTime(path string) int64 {
 		return time.Now().Unix()
 	}
 	return fi.ModTime().Unix()
-}
-
-// __FILE__ returns the file name in which the function was invoked
-func FILE() string {
-	_, file, _, _ := runtime.Caller(1)
-	return file
-}
-
-// __LINE__ returns the line number at which the function was invoked
-func LINE() int {
-	_, _, line, _ := runtime.Caller(1)
-	return line
 }
 
 func command(s string) *exec.Cmd {
