@@ -1,13 +1,13 @@
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
 # github.com/fsnotify/fsnotify v1.4.7
+## explicit
 github.com/fsnotify/fsnotify
 # github.com/go-logr/logr v0.2.0
 github.com/go-logr/logr
 # github.com/go-sql-driver/mysql v1.5.0
+## explicit
 github.com/go-sql-driver/mysql
-# github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
-github.com/golang/glog
 # github.com/golang/protobuf v1.4.2
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/ptypes
@@ -16,16 +16,23 @@ github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
+# github.com/mattn/go-sqlite3 v2.0.3+incompatible
+## explicit
+# github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
+## explicit
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
 # github.com/spf13/cobra v1.0.0
+## explicit
 github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
 # github.com/stretchr/testify v1.6.1
+## explicit
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/require
 # github.com/yubo/golib v0.0.0-20200827083130-39861c718418
+## explicit
 github.com/yubo/golib/logs
 github.com/yubo/golib/orm
 github.com/yubo/golib/status
@@ -36,10 +43,14 @@ github.com/yubo/golib/util/wait
 # golang.org/x/sys v0.0.0-20200812155832-6a926be9bd1d
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
+# golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
+## explicit
 # google.golang.org/genproto v0.0.0-20200806141610-86f49bd18e98
+## explicit
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
 # google.golang.org/grpc v1.31.0
+## explicit
 google.golang.org/grpc/attributes
 google.golang.org/grpc/codes
 google.golang.org/grpc/connectivity
@@ -52,6 +63,7 @@ google.golang.org/grpc/internal/grpclog
 google.golang.org/grpc/peer
 google.golang.org/grpc/serviceconfig
 # google.golang.org/protobuf v1.25.0
+## explicit
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
 google.golang.org/protobuf/internal/descfmt
@@ -81,7 +93,10 @@ google.golang.org/protobuf/runtime/protoimpl
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb
+# gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f
+## explicit
 # gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
 gopkg.in/yaml.v3
 # k8s.io/klog/v2 v2.3.0
+## explicit
 k8s.io/klog/v2
