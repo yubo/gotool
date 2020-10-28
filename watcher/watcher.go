@@ -56,14 +56,6 @@ type watcher struct {
 func NewWatcher(cf *config) (*watcher, error) {
 	cf.delay = time.Millisecond * time.Duration(cf.delayMs)
 
-	if len(cf.excludedPaths) == 0 {
-		cf.excludedPaths.Set("vendor")
-	}
-
-	if len(cf.fileExts) == 0 {
-		cf.fileExts.Set(".go")
-	}
-
 	cf.paths = []string{"."}
 	cf.paths = append(cf.paths, cf.extraPaths...)
 
