@@ -1,7 +1,7 @@
 ## install
 
 ```
-go get github.com/yubo/gotool/rpmdumper
+go get -u github.com/yubo/gotool/rpmdumper
 ```
 
 ## example

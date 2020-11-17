@@ -3,6 +3,7 @@ module github.com/yubo/gotool
 go 1.14
 
 require (
+	github.com/cloudflare/cfssl v1.5.0
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/mattn/go-sqlite3 v2.0.3+incompatible // indirect
@@ -15,5 +16,6 @@ require (
 	google.golang.org/grpc v1.31.0 // indirect
 	google.golang.org/protobuf v1.25.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
+	gopkg.in/yaml.v2 v2.3.0
 	k8s.io/klog/v2 v2.3.0
 )

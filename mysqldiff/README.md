@@ -1,6 +1,12 @@
-## Mysqldiff
+# Mysqldiff
 
 mysqldiff is used to compare the differences between the two databases and generate synchronous SQL 
+
+## install
+
+```
+go get -u github.com/yubo/gotool/mysqldiff
+```
 
 e.g.
 
