@@ -28,8 +28,9 @@ func main() {
 	// default value
 	cf.excludedPaths.Set("vendor")
 	cf.fileExts.Set(".go")
+	cf.includePaths.Set(".")
 
-	fs.VarP(&cf.extraPaths, "list", "i", "list paths to include extra.")
+	fs.VarP(&cf.includePaths, "list", "i", "list paths to include extra.")
 	fs.VarP(&cf.excludedPaths, "exclude", "e", "List of paths to exclude.")
 	fs.VarP(&cf.fileExts, "file", "f", "List of file extension.")
 	fs.Int64VarP(&cf.delayMs, "delay", "d", 500, "delay time when recv fs notify(Millisecond)")

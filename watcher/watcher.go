@@ -19,14 +19,13 @@ import (
 )
 
 type config struct {
-	extraPaths    StrFlags
+	includePaths  StrFlags
 	excludedPaths StrFlags
 	fileExts      StrFlags
 	delayMs       int64
 	delay         time.Duration
 	cmd1          string
 	cmd2          string
-	paths         []string
 }
 
 type StrFlags []string
@@ -56,12 +55,9 @@ type watcher struct {
 func NewWatcher(cf *config) (*watcher, error) {
 	cf.delay = time.Millisecond * time.Duration(cf.delayMs)
 
-	cf.paths = []string{"."}
-	cf.paths = append(cf.paths, cf.extraPaths...)
-
 	klog.Infof("excludedPaths %v", cf.excludedPaths)
 	klog.Infof("watch file exts %v", cf.fileExts)
-	klog.Infof("include paths %v", cf.paths)
+	klog.Infof("include paths %v", cf.includePaths)
 
 	watcher := &watcher{
 		config:    cf,
@@ -134,7 +130,7 @@ func (p *watcher) Do() (done <-chan error, err error) {
 	}()
 
 	klog.Info("Initializing watcher...")
-	for _, path := range p.paths {
+	for _, path := range p.includePaths {
 		klog.V(6).Infof("Watching: %s", path)
 		if err := p.Add(path); err != nil {
 			klog.Fatalf("Failed to watch directory: %s", err)
@@ -271,7 +267,7 @@ func (p *watcher) readAppDirectories(directory string) {
 		}
 
 		if p.shouldWatchFileWithExtension(fileInfo.Name()) {
-			p.paths = append(p.paths, directory)
+			p.includePaths = append(p.includePaths, directory)
 			useDirectory = true
 		}
 	}
