@@ -55,9 +55,13 @@ type watcher struct {
 func NewWatcher(cf *config) (*watcher, error) {
 	cf.delay = time.Millisecond * time.Duration(cf.delayMs)
 
+	if len(cf.includePaths) > 1 {
+		cf.includePaths = cf.includePaths[1:]
+	}
+
+	klog.Infof("include paths %v", cf.includePaths)
 	klog.Infof("excludedPaths %v", cf.excludedPaths)
 	klog.Infof("watch file exts %v", cf.fileExts)
-	klog.Infof("include paths %v", cf.includePaths)
 
 	watcher := &watcher{
 		config:    cf,
