@@ -10,7 +10,7 @@ import (
 
 type Doc struct {
 	*Config
-	db   *orm.Db
+	db   *orm.DB
 	sqls []string
 }
 

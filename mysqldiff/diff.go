@@ -9,8 +9,8 @@ import (
 
 type Differ struct {
 	*Config
-	oDb  *orm.Db
-	nDb  *orm.Db
+	oDb  *orm.DB
+	nDb  *orm.DB
 	sqls []string
 }
 
@@ -118,7 +118,7 @@ func (p *Differ) compareTable(tableName string) error {
 	return nil
 }
 
-func getTableCreateSql(db *orm.Db, table string) (sql string, err error) {
+func getTableCreateSql(db *orm.DB, table string) (sql string, err error) {
 	var name string
 	err = db.Query("show create table "+table).Row(&name, &sql)
 	return
