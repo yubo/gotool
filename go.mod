@@ -16,3 +16,5 @@ require (
 	k8s.io/apimachinery v0.21.3 // indirect
 	k8s.io/klog/v2 v2.9.0
 )
+
+replace k8s.io/klog/v2 => k8s.io/klog/v2 v2.9.0
