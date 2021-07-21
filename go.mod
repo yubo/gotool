@@ -10,7 +10,7 @@ require (
 	github.com/spf13/cobra v1.1.1
 	github.com/stretchr/testify v1.6.1
 	github.com/yubo/apiserver v0.0.0-20210720154326-23d3054c51e0 // indirect
-	github.com/yubo/golib v0.0.0-20210704160355-cd99ea6c5988
+	github.com/yubo/golib v0.0.0-20210721042956-1f7970fbcbc1
 	google.golang.org/grpc v1.31.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/apimachinery v0.21.3 // indirect

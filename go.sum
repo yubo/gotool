@@ -516,8 +516,8 @@ github.com/yubo/apiserver v0.0.0-20210720154326-23d3054c51e0/go.mod h1:MV7CWY3kX
 github.com/yubo/golib v0.0.0-20201231081205-4bceb4ed823f/go.mod h1:sSXNy7vDvMeTaHDb++OwiHzChuKCJVPBPkuJZFzIfRw=
 github.com/yubo/golib v0.0.0-20210427164946-e2c7d7a7e165/go.mod h1:6NNKbCitOPP4euQ1qKeBwf6dvT+Wsa+Nru/LghyZmBs=
 github.com/yubo/golib v0.0.0-20210530151551-3c17bab5028d/go.mod h1:st40mv93/PgS1i/UdPDipoeKxZjMkNhA/ftg90GaWM0=
-github.com/yubo/golib v0.0.0-20210704160355-cd99ea6c5988 h1:ffSUcnpnvYA3PI0F+8jMRvKOcZiKLTDgDu0bRMlEq9I=
-github.com/yubo/golib v0.0.0-20210704160355-cd99ea6c5988/go.mod h1:rds/RLW9dwfBpEkLoDMAGrSHjCMR7owr01OBibtPzuE=
+github.com/yubo/golib v0.0.0-20210721042956-1f7970fbcbc1 h1:Iey9DnKCdyURg2vb00CYJoccYaTk2PzKuih2oyZ3Qhs=
+github.com/yubo/golib v0.0.0-20210721042956-1f7970fbcbc1/go.mod h1:rds/RLW9dwfBpEkLoDMAGrSHjCMR7owr01OBibtPzuE=
 github.com/yubo/goswagger v0.0.0-20201130073105-234dcf703666/go.mod h1:WNzjs/eVM2zcc4DmhNgEeRR+fe5oGGsaz01T8UYrtXM=
 github.com/yubo/goswagger v0.0.0-20210530151208-4cd1816f5cf6/go.mod h1:oxI8cqgLUY4bk45aS/91LkA+Ll5zNARuH4cRaURKlcc=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
