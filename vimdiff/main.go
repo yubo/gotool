@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yubo/golib/staging/logs"
+	"github.com/yubo/golib/logs"
 )
 
 // usage: ORIG_DIR=/a CUR_DIR=/b vimdiff src/main.go

@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/yubo/golib/staging/logs"
+	"github.com/yubo/golib/logs"
 )
 
 func main() {
