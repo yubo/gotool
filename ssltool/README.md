@@ -2,7 +2,7 @@
 
 #### Install
 ```
-go get -u github.com/yubo/gotool/ssltool
+go get github.com/yubo/gotool/ssltool
 ```
 
 #### Configure

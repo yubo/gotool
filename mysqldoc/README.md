@@ -5,7 +5,7 @@ mysql 数据库文档导出工具
 ## install
 
 ```
-go get -u github.com/yubo/gotool/mysqldoc
+go get github.com/yubo/gotool/mysqldoc
 ```
 
 e.g.

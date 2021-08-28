@@ -3,7 +3,7 @@
 ## install
 
 ```
-go get -u github.com/yubo/gotool/vimdiff
+go get github.com/yubo/gotool/vimdiff
 ```
 
 e.g.

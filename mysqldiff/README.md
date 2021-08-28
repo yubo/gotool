@@ -5,7 +5,7 @@ mysqldiff is used to compare the differences between the two databases and gener
 ## install
 
 ```
-go get -u github.com/yubo/gotool/mysqldiff
+go get github.com/yubo/gotool/mysqldiff
 ```
 
 e.g.
