@@ -8,14 +8,24 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/yubo/golib/cli/globalflag"
+	"github.com/yubo/golib/configer"
 	"github.com/yubo/golib/logs"
 )
 
 func main() {
 	logs.InitLogs()
+	defer logs.FlushLogs()
 
+	if err := newRootCmd().Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}
+
+func newRootCmd() *cobra.Command {
 	var cf config
-	var rootCmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "watcher",
 		Short: "watcher is a tool which watch files change and execute some command",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -23,28 +33,12 @@ func main() {
 		},
 	}
 
-	fs := rootCmd.PersistentFlags()
-
-	// default value
-	cf.excludedPaths.Set("vendor")
-	cf.fileExts.Set(".go")
-	cf.includePaths.Set(".")
-
-	fs.VarP(&cf.includePaths, "list", "i", "list paths to include extra.")
-	fs.VarP(&cf.excludedPaths, "exclude", "e", "List of paths to exclude.")
-	fs.VarP(&cf.fileExts, "file", "f", "List of file extension.")
-	fs.Int64VarP(&cf.delayMs, "delay", "d", 500, "delay time when recv fs notify(Millisecond)")
-	fs.StringVar(&cf.cmd1, "c1", "make", "run this cmd(c1) when recv inotify event")
-	fs.StringVar(&cf.cmd2, "c2", "make -s devrun", "invoke the cmd(c2) output when c1 is successfully executed")
-
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	configer.AddFlags(cmd.Flags(), &cf)
+	globalflag.AddGlobalFlags(cmd.Flags(), "watcher")
+	return cmd
 }
 
 func watch(cf *config) error {
-
 	watcher, err := NewWatcher(cf)
 	if err != nil {
 		return err

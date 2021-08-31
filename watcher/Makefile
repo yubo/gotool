@@ -5,3 +5,6 @@ all: $(EXEC)
 
 $(EXEC): *.go
 	go build -o $@
+
+clean:
+	rm -f $(EXEC)

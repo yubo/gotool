@@ -19,28 +19,12 @@ import (
 )
 
 type config struct {
-	includePaths  StrFlags
-	excludedPaths StrFlags
-	fileExts      StrFlags
-	delayMs       int64
-	delay         time.Duration
-	cmd1          string
-	cmd2          string
-}
-
-type StrFlags []string
-
-func (s *StrFlags) String() string {
-	return fmt.Sprintf("%s", *s)
-}
-
-func (s *StrFlags) Set(value string) error {
-	*s = append(*s, value)
-	return nil
-}
-
-func (s *StrFlags) Type() string {
-	return "strflags"
+	IncludePaths  []string      `flag:"include,i" default:"." description:"list paths to include extra."`
+	ExcludedPaths []string      `flag:"exclude" default:"vendor" description:"List of paths to exclude."`
+	FileExts      []string      `flag:"file,f" default:".go" description:"List of file extension."`
+	Delay         time.Duration `flag:"delay,d" default:"500ms" description:"delay time when recv fs notify(Millisecond)"`
+	Cmd1          string        `flag:"c1" default:"make" description:"run this cmd(c1) when recv inotify event"`
+	Cmd2          string        `flag:"c2" default:"make -s devrun" description:"invoke the cmd(c2) output when c1 is successfully executed"`
 }
 
 type watcher struct {
@@ -53,15 +37,13 @@ type watcher struct {
 }
 
 func NewWatcher(cf *config) (*watcher, error) {
-	cf.delay = time.Millisecond * time.Duration(cf.delayMs)
-
-	if len(cf.includePaths) > 1 {
-		cf.includePaths = cf.includePaths[1:]
+	if len(cf.IncludePaths) > 1 {
+		cf.IncludePaths = cf.IncludePaths[1:]
 	}
 
-	klog.Infof("include paths %v", cf.includePaths)
-	klog.Infof("excludedPaths %v", cf.excludedPaths)
-	klog.Infof("watch file exts %v", cf.fileExts)
+	klog.Infof("include paths %v", cf.IncludePaths)
+	klog.Infof("excludedPaths %v", cf.ExcludedPaths)
+	klog.Infof("watch file exts %v", cf.FileExts)
 
 	watcher := &watcher{
 		config:    cf,
@@ -88,14 +70,14 @@ func (p *watcher) Do() (done <-chan error, err error) {
 	go func() {
 		var ev *fsnotify.Event
 		pending := false
-		ticker := time.NewTicker(p.delay)
+		ticker := time.NewTicker(p.Delay)
 		for {
 			select {
 			case e := <-buildEvent:
 				pending = true
 				ev = e
 				ticker.Stop()
-				ticker = time.NewTicker(p.delay)
+				ticker = time.NewTicker(p.Delay)
 			case <-ticker.C:
 				if pending {
 					p.autoBuild(ev)
@@ -134,7 +116,7 @@ func (p *watcher) Do() (done <-chan error, err error) {
 	}()
 
 	klog.Info("Initializing watcher...")
-	for _, path := range p.includePaths {
+	for _, path := range p.IncludePaths {
 		klog.V(6).Infof("Watching: %s", path)
 		if err := p.Add(path); err != nil {
 			klog.Fatalf("Failed to watch directory: %s", err)
@@ -149,7 +131,7 @@ func (p *watcher) autoBuild(e *fsnotify.Event) {
 	p.Lock()
 	defer p.Unlock()
 
-	cmd := command(p.cmd1)
+	cmd := command(p.Cmd1)
 	output, err := cmd.CombinedOutput()
 	klog.Infof("---------- %s -------", e)
 	if err != nil {
@@ -186,10 +168,10 @@ func (p *watcher) restart() {
 }
 
 func (p *watcher) getCmd() string {
-	cmd := command(p.cmd2)
+	cmd := command(p.Cmd2)
 	output, err := cmd.Output()
 	if err != nil {
-		klog.Errorf("run %s err %s", p.cmd2, err)
+		klog.Errorf("run %s err %s", p.Cmd2, err)
 	}
 	return strings.TrimSpace(strings.Split(string(output), "\n")[0])
 }
@@ -197,6 +179,11 @@ func (p *watcher) getCmd() string {
 // start starts the command process
 func (p *watcher) start() {
 	cmd := p.getCmd()
+	if cmd == "" {
+		klog.Infof("cmd is empty")
+		return
+	}
+
 	p.cmd = command(cmd)
 	p.cmd.Stdout = os.Stdout
 	p.cmd.Stderr = os.Stderr
@@ -220,7 +207,7 @@ func (p *watcher) start() {
 // shouldWatchFileWithExtension returns true if the name of the file
 // hash a suffix that should be watched.
 func (p *watcher) shouldWatchFileWithExtension(name string) bool {
-	for _, s := range p.fileExts {
+	for _, s := range p.FileExts {
 		if strings.HasSuffix(name, s) {
 			return true
 		}
@@ -230,7 +217,7 @@ func (p *watcher) shouldWatchFileWithExtension(name string) bool {
 
 // If a file is excluded
 func (p *watcher) isExcluded(file string) bool {
-	for _, p := range p.excludedPaths {
+	for _, p := range p.ExcludedPaths {
 		absP, err := filepath.Abs(p)
 		if err != nil {
 			klog.Errorf("Cannot get absolute path of '%s'", p)
@@ -271,7 +258,7 @@ func (p *watcher) readAppDirectories(directory string) {
 		}
 
 		if p.shouldWatchFileWithExtension(fileInfo.Name()) {
-			p.includePaths = append(p.includePaths, directory)
+			p.IncludePaths = append(p.IncludePaths, directory)
 			useDirectory = true
 		}
 	}
