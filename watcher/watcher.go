@@ -19,6 +19,7 @@ import (
 )
 
 type config struct {
+	includePaths  []string
 	IncludePaths  []string      `flag:"include,i" default:"." description:"list paths to include extra."`
 	ExcludedPaths []string      `flag:"exclude" default:"vendor" description:"List of paths to exclude."`
 	FileExts      []string      `flag:"file,f" default:".go" description:"List of file extension."`
@@ -37,10 +38,6 @@ type watcher struct {
 }
 
 func NewWatcher(cf *config) (*watcher, error) {
-	if len(cf.IncludePaths) > 1 {
-		cf.IncludePaths = cf.IncludePaths[1:]
-	}
-
 	klog.Infof("include paths %v", cf.IncludePaths)
 	klog.Infof("excludedPaths %v", cf.ExcludedPaths)
 	klog.Infof("watch file exts %v", cf.FileExts)
@@ -51,8 +48,9 @@ func NewWatcher(cf *config) (*watcher, error) {
 	}
 
 	// expend currpath
-	dir, _ := os.Getwd()
-	watcher.readAppDirectories(dir)
+	for _, dir := range cf.IncludePaths {
+		watcher.readAppDirectories(dir)
+	}
 
 	return watcher, nil
 
@@ -116,7 +114,7 @@ func (p *watcher) Do() (done <-chan error, err error) {
 	}()
 
 	klog.Info("Initializing watcher...")
-	for _, path := range p.IncludePaths {
+	for _, path := range p.includePaths {
 		klog.V(6).Infof("Watching: %s", path)
 		if err := p.Add(path); err != nil {
 			klog.Fatalf("Failed to watch directory: %s", err)
@@ -258,7 +256,7 @@ func (p *watcher) readAppDirectories(directory string) {
 		}
 
 		if p.shouldWatchFileWithExtension(fileInfo.Name()) {
-			p.IncludePaths = append(p.IncludePaths, directory)
+			p.includePaths = append(p.includePaths, directory)
 			useDirectory = true
 		}
 	}
