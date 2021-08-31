@@ -1,10 +1,12 @@
-.PHONY: dev devrun
-EXEC=$(GOPATH)/bin/watcher
+.PHONY: install clean
 
-all: $(EXEC)
+all: watcher
 
-$(EXEC): *.go
+watcher: *.go
 	go build -o $@
 
+install: watcher
+	cp -a watcher ${GOPATH}/bin/watcher
+
 clean:
-	rm -f $(EXEC)
+	rm -f watcher

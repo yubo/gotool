@@ -10,8 +10,10 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -23,6 +25,7 @@ type config struct {
 	IncludePaths  []string      `flag:"include,i" default:"." description:"list paths to include extra."`
 	ExcludedPaths []string      `flag:"exclude" default:"vendor" description:"List of paths to exclude."`
 	FileExts      []string      `flag:"file,f" default:".go" description:"List of file extension."`
+	PidFilePath   string        `flag:"pid" description:"pid file path"`
 	Delay         time.Duration `flag:"delay,d" default:"500ms" description:"delay time when recv fs notify(Millisecond)"`
 	Cmd1          string        `flag:"c1" default:"make" description:"run this cmd(c1) when recv inotify event"`
 	Cmd2          string        `flag:"c2" default:"make -s devrun" description:"invoke the cmd(c2) output when c1 is successfully executed"`
@@ -151,10 +154,35 @@ func (p *watcher) kill() {
 		}
 	}()
 	if p.cmd != nil && p.cmd.Process != nil {
-		klog.V(3).Infof("Process %d will be killing", p.cmd.Process.Pid)
-		err := p.cmd.Process.Kill()
-		if err != nil {
-			klog.V(3).Infof("Error while killing cmd process: %s", err)
+		pid := p.cmd.Process.Pid
+		if p.PidFilePath != "" {
+			byteContent, err := ioutil.ReadFile(p.PidFilePath)
+			if err == nil {
+				pidStr := strings.TrimSpace(string(byteContent))
+				id, err := strconv.Atoi(pidStr)
+				if err == nil {
+					pid = id
+				}
+			} else {
+				klog.Errorf("open pid file %s err %s", p.PidFilePath, err)
+			}
+		}
+		var err error
+		for i := 0; ; i++ {
+			if i < 10 {
+				klog.V(3).Infof("Signal(SIGTERM) pid(%d)", pid)
+				err = syscall.Kill(pid, syscall.SIGTERM)
+			} else {
+				klog.V(3).Infof("kill(KILL) pid(%d)", pid)
+				err = syscall.Kill(pid, syscall.SIGKILL)
+			}
+			if err == os.ErrProcessDone || err == syscall.ESRCH {
+				klog.V(3).Infof("killed(%d)", pid)
+				break
+			}
+
+			klog.V(3).Infof("kill(%d) err %v", pid, err)
+			time.Sleep(time.Second)
 		}
 	}
 }
@@ -197,7 +225,7 @@ func (p *watcher) start() {
 		if err := p.cmd.Wait(); err != nil {
 			klog.Infof("Process %d exit %v", p.cmd.Process.Pid, err)
 		} else {
-			klog.Infof("process exit 0")
+			klog.Infof("Process %d exit 0", p.cmd.Process.Pid)
 		}
 	}()
 }
