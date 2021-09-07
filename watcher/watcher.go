@@ -29,6 +29,7 @@ type config struct {
 	Delay         time.Duration `flag:"delay,d" default:"500ms" description:"delay time when recv fs notify(Millisecond)"`
 	Cmd1          string        `flag:"c1" default:"make" description:"run this cmd(c1) when recv inotify event"`
 	Cmd2          string        `flag:"c2" default:"make -s devrun" description:"invoke the cmd(c2) output when c1 is successfully executed"`
+	Cmd           string        `flag:"cmd" description:"run this cmd when recv inotify event(Conflict with --c1)"`
 }
 
 type watcher struct {
@@ -132,17 +133,20 @@ func (p *watcher) autoBuild(e *fsnotify.Event) {
 	p.Lock()
 	defer p.Unlock()
 
-	cmd := command(p.Cmd1)
-	output, err := cmd.CombinedOutput()
-	klog.Infof("---------- %s -------", e)
-	if err != nil {
-		klog.Error(string(output))
-		klog.Error(err)
-		return
+	if p.Cmd == "" {
+		cmd := newCmd(p.Cmd1)
+		output, err := cmd.CombinedOutput()
+		klog.Infof("---------- %s -------", e)
+		if err != nil {
+			klog.Error(string(output))
+			klog.Error(err)
+			return
+		}
+
+		klog.V(3).Info(string(output))
+		klog.V(3).Info("Built Successfully!")
 	}
 
-	klog.V(3).Info(string(output))
-	klog.V(3).Info("Built Successfully!")
 	p.restart()
 }
 
@@ -171,10 +175,10 @@ func (p *watcher) kill() {
 		for i := 0; ; i++ {
 			if i < 10 {
 				klog.V(3).Infof("Signal(SIGTERM) pid(%d)", pid)
-				err = syscall.Kill(pid, syscall.SIGTERM)
+				err = syscall.Kill(-pid, syscall.SIGTERM)
 			} else {
 				klog.V(3).Infof("kill(KILL) pid(%d)", pid)
-				err = syscall.Kill(pid, syscall.SIGKILL)
+				err = syscall.Kill(-pid, syscall.SIGKILL)
 			}
 			if err == os.ErrProcessDone || err == syscall.ESRCH {
 				klog.V(3).Infof("killed(%d)", pid)
@@ -194,7 +198,11 @@ func (p *watcher) restart() {
 }
 
 func (p *watcher) getCmd() string {
-	cmd := command(p.Cmd2)
+	if p.Cmd != "" {
+		return p.Cmd
+	}
+
+	cmd := newCmd(p.Cmd2)
 	output, err := cmd.Output()
 	if err != nil {
 		klog.Errorf("run %s err %s", p.Cmd2, err)
@@ -210,7 +218,8 @@ func (p *watcher) start() {
 		return
 	}
 
-	p.cmd = command(cmd)
+	p.cmd = newCmd(cmd)
+	p.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	p.cmd.Stdout = os.Stdout
 	p.cmd.Stderr = os.Stderr
 
@@ -308,7 +317,7 @@ func GetFileModTime(path string) int64 {
 	return fi.ModTime().Unix()
 }
 
-func command(s string) *exec.Cmd {
+func newCmd(s string) *exec.Cmd {
 	c := strings.Fields(s)
 	return exec.Command(c[0], c[1:]...)
 }
