@@ -6,7 +6,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/yubo/golib/cli/globalflag"
