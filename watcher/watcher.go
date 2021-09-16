@@ -10,8 +10,10 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -20,12 +22,14 @@ import (
 
 type config struct {
 	includePaths  []string
-	excludedPaths []string
-	fileExts      []string
-	delayMs       int64
-	delay         time.Duration
-	cmd1          string
-	cmd2          string
+	IncludePaths  []string      `flag:"include,i" default:"." description:"list paths to include extra."`
+	ExcludedPaths []string      `flag:"exclude" default:"vendor" description:"List of paths to exclude."`
+	FileExts      []string      `flag:"file,f" default:".go" description:"List of file extension."`
+	PidFilePath   string        `flag:"pid" description:"pid file path"`
+	Delay         time.Duration `flag:"delay,d" default:"500ms" description:"delay time when recv fs notify(Millisecond)"`
+	Cmd1          string        `flag:"c1" default:"make" description:"run this cmd(c1) when recv inotify event"`
+	Cmd2          string        `flag:"c2" default:"make -s devrun" description:"invoke the cmd(c2) output when c1 is successfully executed"`
+	Cmd           string        `flag:"cmd" description:"run this cmd when recv inotify event(Conflict with --c1)"`
 }
 
 type watcher struct {
@@ -38,15 +42,9 @@ type watcher struct {
 }
 
 func NewWatcher(cf *config) (*watcher, error) {
-	cf.delay = time.Millisecond * time.Duration(cf.delayMs)
-
-	if len(cf.includePaths) > 1 {
-		cf.includePaths = cf.includePaths[1:]
-	}
-
-	klog.Infof("include paths %v", cf.includePaths)
-	klog.Infof("excludedPaths %v", cf.excludedPaths)
-	klog.Infof("watch file exts %v", cf.fileExts)
+	klog.Infof("include paths %v", cf.IncludePaths)
+	klog.Infof("excludedPaths %v", cf.ExcludedPaths)
+	klog.Infof("watch file exts %v", cf.FileExts)
 
 	watcher := &watcher{
 		config:    cf,
@@ -54,8 +52,9 @@ func NewWatcher(cf *config) (*watcher, error) {
 	}
 
 	// expend currpath
-	dir, _ := os.Getwd()
-	watcher.readAppDirectories(dir)
+	for _, dir := range cf.IncludePaths {
+		watcher.readAppDirectories(dir)
+	}
 
 	return watcher, nil
 
@@ -73,14 +72,14 @@ func (p *watcher) Do() (done <-chan error, err error) {
 	go func() {
 		var ev *fsnotify.Event
 		pending := false
-		ticker := time.NewTicker(p.delay)
+		ticker := time.NewTicker(p.Delay)
 		for {
 			select {
 			case e := <-buildEvent:
 				pending = true
 				ev = e
 				ticker.Stop()
-				ticker = time.NewTicker(p.delay)
+				ticker = time.NewTicker(p.Delay)
 			case <-ticker.C:
 				if pending {
 					p.autoBuild(ev)
@@ -134,17 +133,20 @@ func (p *watcher) autoBuild(e *fsnotify.Event) {
 	p.Lock()
 	defer p.Unlock()
 
-	cmd := command(p.cmd1)
-	output, err := cmd.CombinedOutput()
-	klog.Infof("---------- %s -------", e)
-	if err != nil {
-		klog.Error(string(output))
-		klog.Error(err)
-		return
+	if p.Cmd == "" {
+		cmd := newCmd(p.Cmd1)
+		output, err := cmd.CombinedOutput()
+		klog.Infof("---------- %s -------", e)
+		if err != nil {
+			klog.Error(string(output))
+			klog.Error(err)
+			return
+		}
+
+		klog.V(3).Info(string(output))
+		klog.V(3).Info("Built Successfully!")
 	}
 
-	klog.V(3).Info(string(output))
-	klog.V(3).Info("Built Successfully!")
 	p.restart()
 }
 
@@ -156,10 +158,35 @@ func (p *watcher) kill() {
 		}
 	}()
 	if p.cmd != nil && p.cmd.Process != nil {
-		klog.V(3).Infof("Process %d will be killing", p.cmd.Process.Pid)
-		err := p.cmd.Process.Kill()
-		if err != nil {
-			klog.V(3).Infof("Error while killing cmd process: %s", err)
+		pid := p.cmd.Process.Pid
+		if p.PidFilePath != "" {
+			byteContent, err := ioutil.ReadFile(p.PidFilePath)
+			if err == nil {
+				pidStr := strings.TrimSpace(string(byteContent))
+				id, err := strconv.Atoi(pidStr)
+				if err == nil {
+					pid = id
+				}
+			} else {
+				klog.Errorf("open pid file %s err %s", p.PidFilePath, err)
+			}
+		}
+		var err error
+		for i := 0; ; i++ {
+			if i < 10 {
+				klog.V(3).Infof("Signal(SIGTERM) pid(%d)", pid)
+				err = syscall.Kill(-pid, syscall.SIGTERM)
+			} else {
+				klog.V(3).Infof("kill(KILL) pid(%d)", pid)
+				err = syscall.Kill(-pid, syscall.SIGKILL)
+			}
+			if err == os.ErrProcessDone || err == syscall.ESRCH {
+				klog.V(3).Infof("killed(%d)", pid)
+				break
+			}
+
+			klog.V(3).Infof("kill(%d) err %v", pid, err)
+			time.Sleep(time.Second)
 		}
 	}
 }
@@ -171,10 +198,14 @@ func (p *watcher) restart() {
 }
 
 func (p *watcher) getCmd() string {
-	cmd := command(p.cmd2)
+	if p.Cmd != "" {
+		return p.Cmd
+	}
+
+	cmd := newCmd(p.Cmd2)
 	output, err := cmd.Output()
 	if err != nil {
-		klog.Errorf("run %s err %s", p.cmd2, err)
+		klog.Errorf("run %s err %s", p.Cmd2, err)
 	}
 	return strings.TrimSpace(strings.Split(string(output), "\n")[0])
 }
@@ -182,7 +213,13 @@ func (p *watcher) getCmd() string {
 // start starts the command process
 func (p *watcher) start() {
 	cmd := p.getCmd()
-	p.cmd = command(cmd)
+	if cmd == "" {
+		klog.Infof("cmd is empty")
+		return
+	}
+
+	p.cmd = newCmd(cmd)
+	p.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	p.cmd.Stdout = os.Stdout
 	p.cmd.Stderr = os.Stderr
 
@@ -197,7 +234,7 @@ func (p *watcher) start() {
 		if err := p.cmd.Wait(); err != nil {
 			klog.Infof("Process %d exit %v", p.cmd.Process.Pid, err)
 		} else {
-			klog.Infof("process exit 0")
+			klog.Infof("Process %d exit 0", p.cmd.Process.Pid)
 		}
 	}()
 }
@@ -205,7 +242,7 @@ func (p *watcher) start() {
 // shouldWatchFileWithExtension returns true if the name of the file
 // hash a suffix that should be watched.
 func (p *watcher) shouldWatchFileWithExtension(name string) bool {
-	for _, s := range p.fileExts {
+	for _, s := range p.FileExts {
 		if strings.HasSuffix(name, s) {
 			return true
 		}
@@ -215,7 +252,7 @@ func (p *watcher) shouldWatchFileWithExtension(name string) bool {
 
 // If a file is excluded
 func (p *watcher) isExcluded(file string) bool {
-	for _, p := range p.excludedPaths {
+	for _, p := range p.ExcludedPaths {
 		absP, err := filepath.Abs(p)
 		if err != nil {
 			klog.Errorf("Cannot get absolute path of '%s'", p)
@@ -280,7 +317,7 @@ func GetFileModTime(path string) int64 {
 	return fi.ModTime().Unix()
 }
 
-func command(s string) *exec.Cmd {
+func newCmd(s string) *exec.Cmd {
 	c := strings.Fields(s)
 	return exec.Command(c[0], c[1:]...)
 }
