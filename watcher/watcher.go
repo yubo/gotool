@@ -19,28 +19,13 @@ import (
 )
 
 type config struct {
-	includePaths  StrFlags
-	excludedPaths StrFlags
-	fileExts      StrFlags
+	includePaths  []string
+	excludedPaths []string
+	fileExts      []string
 	delayMs       int64
 	delay         time.Duration
 	cmd1          string
 	cmd2          string
-}
-
-type StrFlags []string
-
-func (s *StrFlags) String() string {
-	return fmt.Sprintf("%s", *s)
-}
-
-func (s *StrFlags) Set(value string) error {
-	*s = append(*s, value)
-	return nil
-}
-
-func (s *StrFlags) Type() string {
-	return "strflags"
 }
 
 type watcher struct {

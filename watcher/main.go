@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/yubo/golib/logs"
@@ -25,15 +26,10 @@ func main() {
 
 	fs := rootCmd.PersistentFlags()
 
-	// default value
-	cf.excludedPaths.Set("vendor")
-	cf.fileExts.Set(".go")
-	cf.includePaths.Set(".")
-
-	fs.VarP(&cf.includePaths, "list", "i", "list paths to include extra.")
-	fs.VarP(&cf.excludedPaths, "exclude", "e", "List of paths to exclude.")
-	fs.VarP(&cf.fileExts, "file", "f", "List of file extension.")
-	fs.Int64VarP(&cf.delayMs, "delay", "d", 500, "delay time when recv fs notify(Millisecond)")
+	fs.StringArrayVarP(&cf.includePaths, "list", "i", []string{"."}, "list paths to include extra.")
+	fs.StringArrayVarP(&cf.excludedPaths, "exclude", "e", []string{"vendor"}, "List of paths to exclude.")
+	fs.StringArrayVarP(&cf.fileExts, "file", "f", []string{".go"}, "List of file extension.")
+	fs.DurationVarP(&cf.delayMs, "delay", "d", 500*time.Millisecond, "delay time when recv fs notify(Millisecond)")
 	fs.StringVar(&cf.cmd1, "c1", "make", "run this cmd(c1) when recv inotify event")
 	fs.StringVar(&cf.cmd2, "c2", "make -s devrun", "invoke the cmd(c2) output when c1 is successfully executed")
 

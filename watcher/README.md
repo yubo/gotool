@@ -6,7 +6,6 @@ move from github.com/yubo/watcher
 go get github.com/yubo/gotool/watcher
 ```
 
-
 #### how to use
 
 ```
