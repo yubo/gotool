@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -71,10 +72,16 @@ func (p *watcher) Do() (done <-chan error, err error) {
 
 	go func() {
 		var ev *fsnotify.Event
+		sigs := make(chan os.Signal, 2)
+		signal.Notify(sigs, os.Interrupt)
 		pending := false
 		ticker := time.NewTicker(p.Delay)
 		for {
 			select {
+			case <-sigs:
+				klog.V(1).Infof("recv shutdown signal, exiting")
+				p.kill()
+				os.Exit(0)
 			case e := <-buildEvent:
 				pending = true
 				ev = e
