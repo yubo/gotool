@@ -24,7 +24,7 @@ import (
 type config struct {
 	includePaths  []string
 	IncludePaths  []string      `flag:"include,i" default:"." description:"list paths to include extra."`
-	ExcludedPaths []string      `flag:"exclude" default:"vendor" description:"List of paths to exclude."`
+	ExcludedPaths []string      `flag:"exclude,e" default:"vendor" description:"List of paths to exclude."`
 	FileExts      []string      `flag:"file,f" default:".go" description:"List of file extension."`
 	PidFilePath   string        `flag:"pid" description:"pid file path"`
 	Delay         time.Duration `flag:"delay,d" default:"500ms" description:"delay time when recv fs notify(Millisecond)"`
