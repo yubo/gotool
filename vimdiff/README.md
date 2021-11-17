@@ -1,11 +1,12 @@
 # Mysqldiff
 
-## install
+## Install
 
 ```
-go get github.com/yubo/gotool/vimdiff
+go install github.com/yubo/gotool/vimdiff
 ```
 
+## Usage
 e.g.
 
 ```shell
