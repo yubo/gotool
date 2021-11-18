@@ -18,19 +18,31 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/yubo/golib/api"
 	"k8s.io/klog/v2"
 )
 
 type config struct {
 	includePaths  []string
-	IncludePaths  []string      `flag:"include,i" default:"." description:"list paths to include extra."`
-	ExcludedPaths []string      `flag:"exclude,e" default:"vendor" description:"List of paths to exclude."`
-	FileExts      []string      `flag:"file,f" default:".go" description:"List of file extension."`
-	PidFilePath   string        `flag:"pid" description:"pid file path"`
-	Delay         time.Duration `flag:"delay,d" default:"500ms" description:"delay time when recv fs notify(Millisecond)"`
-	Cmd1          string        `flag:"c1" default:"make" description:"run this cmd(c1) when recv inotify event"`
-	Cmd2          string        `flag:"c2" default:"make -s devrun" description:"invoke the cmd(c2) output when c1 is successfully executed"`
-	Cmd           string        `flag:"cmd" description:"run this cmd when recv inotify event(Conflict with --c1)"`
+	IncludePaths  []string     `flag:"include,i" description:"list paths to include extra."`
+	ExcludedPaths []string     `flag:"exclude,e" description:"List of paths to exclude."`
+	FileExts      []string     `flag:"file,f" description:"List of file extension."`
+	PidFilePath   string       `flag:"pid" description:"pid file path"`
+	Delay         api.Duration `flag:"delay,d" description:"delay time when recv fs notify(Millisecond)"`
+	Cmd1          string       `flag:"c1" description:"run this cmd(c1) when recv inotify event"`
+	Cmd2          string       `flag:"c2" description:"invoke the cmd(c2) output when c1 is successfully executed"`
+	Cmd           string       `flag:"cmd" description:"run this cmd when recv inotify event(Conflict with --c1)"`
+}
+
+func newConfig() *config {
+	return &config{
+		IncludePaths:  []string{"."},
+		ExcludedPaths: []string{"vendor"},
+		FileExts:      []string{".go"},
+		Delay:         api.NewDuration("500ms"),
+		Cmd1:          "make",
+		Cmd2:          "make -s devrun",
+	}
 }
 
 type watcher struct {
@@ -75,7 +87,7 @@ func (p *watcher) Do() (done <-chan error, err error) {
 		sigs := make(chan os.Signal, 2)
 		signal.Notify(sigs, os.Interrupt)
 		pending := false
-		ticker := time.NewTicker(p.Delay)
+		ticker := time.NewTicker(p.Delay.Duration)
 		for {
 			select {
 			case <-sigs:
@@ -86,7 +98,7 @@ func (p *watcher) Do() (done <-chan error, err error) {
 				pending = true
 				ev = e
 				ticker.Stop()
-				ticker = time.NewTicker(p.Delay)
+				ticker = time.NewTicker(p.Delay.Duration)
 			case <-ticker.C:
 				if pending {
 					p.autoBuild(ev)

@@ -10,13 +10,13 @@ import (
 
 type Doc struct {
 	*Config
-	db   *orm.DB
+	db   orm.DB
 	sqls []string
 }
 
 func (p *Doc) conn() error {
 	var err error
-	if p.db, err = orm.DbOpen("mysql", p.Config.dsn); err != nil {
+	if p.db, err = orm.Open("mysql", p.Config.dsn); err != nil {
 		return err
 	}
 	return nil

@@ -74,7 +74,7 @@ func parseTablesFromFile(file string) ([]*MysqlTable, error) {
 	return tables, nil
 }
 
-func parseTables(db *orm.DB) ([]*MysqlTable, error) {
+func parseTables(db orm.DB) ([]*MysqlTable, error) {
 	var tabNames []string
 
 	if err := db.Query("show tables").Rows(&tabNames); err != nil {
@@ -98,7 +98,7 @@ func parseTables(db *orm.DB) ([]*MysqlTable, error) {
 	return tables, nil
 }
 
-func parseTable(db *orm.DB, tabName string) (*MysqlTable, error) {
+func parseTable(db orm.DB, tabName string) (*MysqlTable, error) {
 	sql, err := getTableCreateSql(db, tabName)
 	if err != nil {
 		return nil, err

@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yubo/golib/logs"
 )
 
 // usage: ORIG_DIR=/a CUR_DIR=/b vimdiff src/main.go
@@ -53,8 +52,6 @@ func (c *config) Validate() (err error) {
 }
 
 func main() {
-	logs.InitLogs()
-
 	cf := &config{
 		origDir: os.Getenv("ORIG_DIR"),
 		curDir:  os.Getenv("CUR_DIR"),

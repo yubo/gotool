@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/yubo/golib/logs"
 )
 
 // usage: mysqldoc --dsn1="root:1234@tcp(localhost:3306)/src_db?charset=utf8" --dsn2="root:1234@tcp(localhost:3306)/src_db?charset=utf8"
@@ -18,8 +17,6 @@ type Config struct {
 }
 
 func main() {
-	logs.InitLogs()
-
 	cf := &Config{}
 	var rootCmd = &cobra.Command{
 		Use:   "mysqldoc",

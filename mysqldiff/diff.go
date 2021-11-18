@@ -9,8 +9,8 @@ import (
 
 type Differ struct {
 	*Config
-	oDb  *orm.DB
-	nDb  *orm.DB
+	oDb  orm.DB
+	nDb  orm.DB
 	sqls []string
 }
 
@@ -25,7 +25,7 @@ func (p *Differ) Do() error {
 			continue
 		}
 
-		if err := p.oDb.ExecErr(v); err != nil {
+		if _, err := p.oDb.Exec(v); err != nil {
 			return err
 		}
 	}
@@ -34,10 +34,10 @@ func (p *Differ) Do() error {
 
 func (p *Differ) Conn() error {
 	var err error
-	if p.oDb, err = orm.DbOpen("mysql", p.oDsn); err != nil {
+	if p.oDb, err = orm.Open("mysql", p.oDsn); err != nil {
 		return err
 	}
-	if p.nDb, err = orm.DbOpen("mysql", p.nDsn); err != nil {
+	if p.nDb, err = orm.Open("mysql", p.nDsn); err != nil {
 		return err
 	}
 	return nil
@@ -118,7 +118,7 @@ func (p *Differ) compareTable(tableName string) error {
 	return nil
 }
 
-func getTableCreateSql(db *orm.DB, table string) (sql string, err error) {
+func getTableCreateSql(db orm.DB, table string) (sql string, err error) {
 	var name string
 	err = db.Query("show create table "+table).Row(&name, &sql)
 	return

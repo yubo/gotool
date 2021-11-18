@@ -4,7 +4,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -18,23 +17,22 @@ func main() {
 	defer logs.FlushLogs()
 
 	if err := newRootCmd().Execute(); err != nil {
-		fmt.Println(err)
 		os.Exit(1)
 	}
 }
 
 func newRootCmd() *cobra.Command {
-	var cf config
+	cf := newConfig()
 	cmd := &cobra.Command{
 		Use:   "watcher",
 		Short: "watcher is a tool which watch files change and execute some command",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return watch(&cf)
+			return watch(cf)
 		},
 	}
 
-	configer.AddFlags(cmd.Flags(), &cf)
-	globalflag.AddGlobalFlags(cmd.Flags(), "watcher")
+	configer.FlagSet(cmd.Flags(), cf)
+	globalflag.AddGlobalFlags(cmd.Flags())
 	return cmd
 }
 
