@@ -1,0 +1,54 @@
+access key:访问密钥
+shardid:碎片
+complete storage:完整的存储
+secret key:密钥
+content whitelist enable:启用内容白名单
+addr:地址
+dicloud region:双云区
+hostname:主机名
+permission:允许
+accept:接受
+bucket uuid:存储桶 uuid
+delimiter:分隔符
+type:类型
+supported:支持的
+region:地区
+one table:一张桌子
+cache limit:缓存限制
+order status:订单状态
+creation timestamp:创建时间戳
+bucket name:存储桶名称
+dc backup:直流备份
+fs type:fs 类型
+max idle:最大空闲
+version:版本
+user name:用户名
+last align timestamp:最后对齐时间戳
+max qps:最大 qps
+lifecycle:生命周期
+white list:白名单
+style value:风格价值
+create timestamp:创建时间戳
+modify timestamp:修改时间戳
+white list enable:白名单启用
+license:执照
+order id:订单编号
+res uuid:资源
+readonly:只读
+dc name:直流名称
+cache enable:缓存启用
+style name:样式名称
+update time:更新时间
+id:ID
+bucket id:存储桶 ID
+version control:版本控制
+strong consistency:强一致性
+complete file num:完整的文件号
+user id:用户身份
+dc bucket:直流桶
+domain:领域
+status:地位
+storage type:存储类型
+directory tree:目录树
+max conn:最大连接数
+bucket num:桶号

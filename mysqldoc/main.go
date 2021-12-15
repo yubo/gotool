@@ -10,10 +10,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// usage: mysqldoc --dsn1="root:1234@tcp(localhost:3306)/src_db?charset=utf8" --dsn2="root:1234@tcp(localhost:3306)/src_db?charset=utf8"
+// usage: mysqldoc --dsn="root:1234@tcp(localhost:3306)/src_db?charset=utf8" --dict ./dict.txt
 
 type Config struct {
-	dsn string
+	dsn  string
+	dict string
 }
 
 func main() {
@@ -28,6 +29,7 @@ func main() {
 
 	fs := rootCmd.PersistentFlags()
 	fs.StringVar(&cf.dsn, "dsn", "", "dsn e.g. root:1234@tcp(localhost:3306)/src_db?charset=utf8")
+	fs.StringVar(&cf.dict, "dict", "./dict.txt", "e.g. ./dict.txt")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
