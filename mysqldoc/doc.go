@@ -11,6 +11,8 @@ import (
 	"github.com/yubo/golib/orm"
 )
 
+const keyPrefix = "name_"
+
 type Doc struct {
 	*Config
 	db   orm.DB
@@ -36,10 +38,12 @@ func (p *Doc) loadDict() map[string]string {
 		bytesRead, err := ioutil.ReadFile(p.dict)
 		if err != nil {
 			fmt.Printf("error opening file: %v\n", err)
-			os.Exit(1)
 		}
 		for _, line := range strings.Split(string(bytesRead), "\n") {
-			if fs := strings.Split(strings.TrimSpace(line), ":"); len(fs) == 2 {
+			line = strings.TrimSpace(line)
+			line = strings.TrimPrefix(line, keyPrefix)
+			line = strings.ReplaceAll(line, "：", ":")
+			if fs := strings.Split(line, ":"); len(fs) == 2 {
 				dict[fs[0]] = fs[1]
 			}
 		}
@@ -53,23 +57,32 @@ func (p *Doc) dbDoc() error {
 		return err
 	}
 
-	dict := p.loadDict()
+	dict1 := p.loadDict()
+	dict2 := map[string]string{}
 
 	for _, tab := range tabs {
-		p.tableDoc(tab, dict)
+		p.tableDoc(tab, dict1, dict2)
 	}
 
-	fmt.Printf("\n\n### miss dict\n")
-	for desc := range dict {
-		if dict[desc] == "" {
-			fmt.Printf("%s\n", desc)
+	if len(dict2) > 0 {
+		fd, err := os.OpenFile(p.dict, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+		if err != nil {
+			return err
 		}
+		defer fd.Close()
+
+		fmt.Fprintf(fd, "\n### miss dict\n")
+		for k, v := range dict2 {
+			fmt.Fprintf(fd, "%s%s: %s\n", keyPrefix, k, v)
+		}
+
+		fmt.Printf("\n\nThere are %d keyword descriptions that were not found and have been added to the dictionary file %s\n", len(dict2), p.dict)
 	}
 
 	return nil
 }
 
-func (p *Doc) tableDoc(tab string, dict map[string]string) error {
+func (p *Doc) tableDoc(tab string, dict1, dict2 map[string]string) error {
 	d, err := parseTable(p.db, tab)
 	if err != nil {
 		return err
@@ -78,7 +91,7 @@ func (p *Doc) tableDoc(tab string, dict map[string]string) error {
 		return nil
 	}
 
-	printTableDoc(d, dict)
+	printTableDoc(d, dict1, dict2)
 	return nil
 }
 
@@ -102,16 +115,16 @@ type tableDoc struct {
 	fields  map[string]string
 }
 
-func printTableDoc(t *MysqlTable, dict map[string]string) {
-	var comment string
-	if m := commentRe.FindStringSubmatch(t.Engine.Desc); len(m) == 2 {
-		comment = m[1]
-	}
+func printTableDoc(t *MysqlTable, dict1, dict2 map[string]string) {
+	//var comment string
+	//if m := commentRe.FindStringSubmatch(t.Engine.Desc); len(m) == 2 {
+	//	comment = m[1]
+	//}
 
 	fmt.Printf("\n\n#### 表名 %s\n", t.Name)
-	if len(comment) > 0 {
-		fmt.Printf("%s\n\n", comment)
-	}
+	//if len(comment) > 0 {
+	//	fmt.Printf("%s\n\n", comment)
+	//}
 
 	//fmt.Printf("序号 | 字段名 | 类型 | 允许空 | 缺省值 | 备注\n")
 	fmt.Printf("序号 | 名称 | 数据类型 | 允许空值 | 说明\n")
@@ -137,10 +150,10 @@ func printTableDoc(t *MysqlTable, dict map[string]string) {
 		//	def = m[1]
 		//}
 		desc := strings.ReplaceAll(v.Name, "_", " ")
-		if s, ok := dict[desc]; ok {
+		if s, ok := dict1[v.Name]; ok {
 			desc = s
 		} else {
-			dict[desc] = ""
+			dict2[v.Name] = desc
 		}
 
 		fmt.Printf("%d | %s | %s | %v | %s\n",
