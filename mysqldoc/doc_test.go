@@ -95,5 +95,7 @@ func TestPrintDoc(t *testing.T) {
 		t.Error(err)
 	}
 
-	printTableDoc(tab)
+	dict := map[string]string{}
+
+	printTableDoc(tab, dict, dict)
 }
