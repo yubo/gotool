@@ -1,6 +1,9 @@
+# httpd
+same as `python -m SimpleHTTPServer`
+
 ## install
 ```
-go get github.com/yubo/gotool/httpd
+go install github.com/yubo/gotool/httpd@latest
 ```
 
 

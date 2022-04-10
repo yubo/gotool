@@ -3,7 +3,7 @@ move from github.com/yubo/watcher
 
 #### install
 ```sh
-go get github.com/yubo/gotool/watcher
+go install github.com/yubo/gotool/watcher@latest
 ```
 
 #### how to use

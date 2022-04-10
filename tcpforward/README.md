@@ -3,7 +3,7 @@
 ## Install
 
 ```
-go install github.com/yubo/gotool/tcpforward
+go install github.com/yubo/gotool/tcpforward@latest
 ```
 
 ## Usage
