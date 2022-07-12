@@ -2,24 +2,33 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 //
-// go get github.com/yubo/gotool/http
+// go install github.com/yubo/gotool/httpd
 package main
 
 import (
 	"flag"
-	"log"
+	"fmt"
 	"net/http"
+	"net/http/httputil"
 )
 
 func main() {
 	port := flag.String("p", "8000", "server mode")
-	dir := flag.String("d", ".", "server mode")
+	dir := flag.String("d", "", "server mode")
 
 	flag.Parse()
 
-	fs := http.FileServer(http.Dir(*dir))
-	http.Handle("/", fs)
+	if d := *dir; d != "" {
+		fs := http.FileServer(http.Dir(d))
+		http.Handle("/", fs)
+	} else {
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			b, _ := httputil.DumpRequest(r, true)
+			fmt.Printf("%s\n", string(b))
 
-	log.Printf("Listening %s ...", *port)
+		})
+	}
+
+	fmt.Printf("Listening %s ...\n", *port)
 	http.ListenAndServe(":"+*port, nil)
 }
