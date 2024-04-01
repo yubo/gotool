@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// usage: mysqldiff --dsn1="root:1234@tcp(localhost:3306)/src_db?charset=utf8" --dsn2="root:1234@tcp(localhost:3306)/src_db?charset=utf8"
+// usage: mysqldiff --dsn1="root:1234@tcp(localhost:3306)/src_db?charset=utf8" --dsn2="root:1234@tcp(localhost:3306)/dst_db?charset=utf8"
 
 type Config struct {
 	oDsn string
